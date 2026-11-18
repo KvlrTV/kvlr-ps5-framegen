@@ -377,7 +377,8 @@ def main() -> int:
     elif kind == "capture":
         if a.capture is None:
             ap.error("--source capture needs --capture N (a device) or --capture FILE")
-        cw, ch = map(int, a.capture_size.split("x"))
+        from framegen.kvlr_capture import request_size  # KVLR: up to 4K from the card (framegen/kvlr_capture.py)
+        cw, ch = request_size(a.capture_size, a.settings)
         src = open_capture(a, cw, ch, test)
     elif kind == "window":
         if not a.window:
@@ -421,6 +422,8 @@ def main() -> int:
             ap.error("--hz 90/120 needs --display, and doesn't write --out yet")
         print(f"[run] output {settings.hz} Hz needs --display without --out; 60 Hz this run")
         settings.override("hz", 60)
+    from framegen.kvlr_capture import wrap  # KVLR: frame generation at the work size (framegen/kvlr_capture.py)
+    src = wrap(src, settings, kind)
 
     # HDR (framegen/hdr.py, settings "hdr"): only for a PS5 Remote Play stream in HDR, and only with the setting on;
     # otherwise nothing below changes. hdr_out: what the stream's frames become ("sdr8": tone-mapped to SDR; "pq16":

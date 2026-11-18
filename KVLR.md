@@ -65,6 +65,14 @@ Esc. When Stop ends Remote Play, `run.py` no longer restores chiaki-ng's window 
 jumps to another monitor before the launcher closes it. The on-screen wording ("Esc: quit" and the like) is swapped
 by the branding layer's `TEXT_SWAPS`.
 
+**4K capture cards** (`framegen/kvlr_capture.py`, settings `capture_size` and `capture_work`, launcher-only group
+"Capture card"; hooks in `run.py` where the capture source opens and after the settings load). The card is asked for
+up to 3840x2160 (upstream always asks 1920x1080), and frame generation works at the "work size": Auto is 1080p for 90
+and 120 fps, and at 60 fps the captured size with NVIDIA VFG low/medium, 1440p otherwise; the window and OBS output
+upscale back. `kvlr/bench_4k.py` times the models at each size (results stay local, in `installer/build/`, because
+NVIDIA's VFG licence forbids publishing them). Not yet tried with a real card; the console must send SDR (10-bit HDR
+isn't read).
+
 **One taskbar button** (`installer/launcher/KvlrTaskbar.cs`, hook in `Ui.cs` `Wire`): the launcher, the pipeline's
 video window and the chiaki-ng it started get the same `System.AppUserModel.ID` (`KvlrTV.KvlrPS5FrameGen`) plus the
 relaunch name and KVLR icon, set through each window's property store every 2 s, so Windows groups them under one

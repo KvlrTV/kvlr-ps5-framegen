@@ -9,7 +9,7 @@ OBS_SIZES = {"2160": (3840, 2160), "1440": (2560, 1440), "1080": (1920, 1080)}
 OBS_SENDER = "KVLR PS5"  # the name OBS's Spout2 Capture source lists
 # Set once and changed on the launcher's Settings page (live, while playing too), so they stay out of the in-video
 # menu, which has to fit a 1080p picture with room for upstream's next settings (tests/test_settings.py).
-MENU_HIDDEN_GROUPS = {"OBS output", "PS5 connection"}
+MENU_HIDDEN_GROUPS = {"OBS output", "PS5 connection", "Capture card"}
 
 # chiaki-ng's saved settings (Qt QSettings in the registry). The launcher (installer/launcher/KvlrChiaki.cs) writes the
 # "PS5 connection" choices there just before Play starts chiaki-ng.
@@ -66,6 +66,24 @@ def kvlr_specs(Spec, on_off: dict) -> tuple:
              help="How much picture data the PS5 is asked to send on your home network. Higher means fewer "
                   "compression marks for the AI frames and the upscaler to work from; 100 Mbps suits a wired "
                   "connection, 30 to 50 Mbps a good 5 GHz Wi-Fi. Applies from the next Play."),
+        Spec("capture_size", "Capture size", ("auto", "2160", "1440", "1080"), "auto",
+             {"auto": "Auto (up to 4K)", "2160": "4K (3840x2160)", "1440": "1440p", "1080": "1080p"},
+             live=False, group="Capture card",
+             help="The picture size asked of a capture card. Auto takes the largest it offers, up to 4K. Set the "
+                  "console's output to the same size at 60 Hz, with HDR off (10-bit HDR isn't read yet). A 4K "
+                  "card on USB needs a fast port (USB 3.2 Gen 2, 10 Gbps). Applies from the next Play.",
+             hints={"auto": "The card's largest, up to 4K", "2160": "Native 4K from the console",
+                    "1440": "Less to carry over USB", "1080": "As SmoovPlay asks"}),
+        Spec("capture_work", "Frame generation size", ("auto", "native", "1440", "1080"), "auto",
+             {"auto": "Auto", "native": "As captured", "1440": "1440p", "1080": "1080p"},
+             live=False, group="Capture card",
+             help="The size the AI frames are made at; the window and OBS output upscale from it. Auto works at "
+                  "1080p for 90 and 120 fps, which is what keeps up from a 4K card today, and at 60 fps keeps "
+                  "4K with NVIDIA VFG (low or medium) and 1440p with RIFE. Applies from the next Play.",
+             hints={"auto": "1080p at 90/120 fps, up to 4K at 60", "native": "Sharpest; won't hold 90/120 from 4K yet",
+                    "1440": "Between the two", "1080": "Lightest: best for 90/120"},
+             impact={"speed": "RIFE at 4K takes about 15 ms per AI frame on an RTX 5070 Ti, too slow for 90 "
+                              "or 120 fps."}),
         Spec("obs_output", "OBS output", (False, True), False, on_off, group="OBS output",
              help="Sends a clean copy of the picture to OBS through Spout: no menu, stats or notes on it. In OBS, "
                   f"add a Spout2 Capture source and pick \"{OBS_SENDER}\" (needs the Spout2 plugin for OBS). "
