@@ -1,0 +1,57 @@
+# Nightly: merge smoovplay/smoovplay's main into ours.
+# Clean merge -> pushed to main. Conflict, or an upstream change to .github/workflows (which this token
+# may not push) -> upstream is put on branch upstream-sync and a PR is opened for a person/Claude to finish.
+name: Sync from upstream SmoovPlay
+
+on:
+  schedule:
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency: upstream-sync
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Merge upstream
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git config user.name "kvlr-upstream-sync"
+          git config user.email "kvlr-upstream-sync@users.noreply.github.com"
+          git remote add upstream https://github.com/smoovplay/smoovplay.git
+          git fetch --tags upstream main
+          UP=$(git rev-parse upstream/main)
+          if git merge-base --is-ancestor "$UP" HEAD; then
+            echo "Already up to date with upstream ${UP:0:7}."
+            exit 0
+          fi
+          BASE=$(git merge-base HEAD "$UP")
+          WF=$(git diff --name-only "$BASE" "$UP" -- .github/workflows | head -1)
+          if [ -z "$WF" ] && git merge --no-edit -m "Merge upstream SmoovPlay ${UP:0:7}" "$UP"; then
+            git push origin HEAD:main
+            echo "Merged upstream ${UP:0:7} into main."
+            exit 0
+          fi
+          git merge --abort 2>/dev/null || true
+          REASON="Merge conflicts with our changes"
+          [ -n "$WF" ] && REASON="Upstream changed .github/workflows, which this workflow's token cannot push"
+          if ! git push -f origin "$UP:refs/heads/upstream-sync"; then
+            gh issue create --title "Upstream sync needs a hand (${UP:0:7})" \
+              --body "$REASON. Merge smoovplay/smoovplay main (${UP}) into main locally: git fetch upstream && git merge upstream/main" || true
+            exit 1
+          fi
+          if [ -z "$(gh pr list --head upstream-sync --state open --json number --jq '.[].number')" ]; then
+            gh pr create --base main --head upstream-sync \
+              --title "Merge upstream SmoovPlay ${UP:0:7}" \
+              --body "$REASON. Resolve in a local checkout (git fetch upstream && git merge upstream/main), keeping KVLR changes in kvlr/ where possible."
+          fi
