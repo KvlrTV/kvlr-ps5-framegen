@@ -127,7 +127,9 @@ def test_menu_disabled_row_and_restart_row():
     m.index = [s.key for _, s in m.rows()].index("fsr_sharpness")
     m.key("right")
     assert st.fsr_sharpness == BY_KEY["fsr_sharpness"].default  # greyed out: no change
-    assert len(m.rows()) == sum(s.applies_to(st.values()) for s in SPECS)  # VSR quality, VFG quality: hidden
+    from framegen.kvlr_settings import MENU_HIDDEN_GROUPS  # KVLR: launcher-only settings aren't menu rows
+    assert len(m.rows()) == sum(s.applies_to(st.values()) for s in SPECS
+                                if s.group not in MENU_HIDDEN_GROUPS)  # VSR quality, VFG quality: hidden
     pending.append("AI engine")
     assert m.rows()[-1][0] == "restart"
     m.index = len(m.rows()) - 1

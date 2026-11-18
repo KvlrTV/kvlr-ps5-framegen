@@ -284,6 +284,9 @@ SPECS: tuple[Spec, ...] = (
               "60 and 120 fps each AI frame is also scored against the real frame it replaced. This session "
               "only."),
 )
+# KVLR: the KVLR edition's own settings (framegen/kvlr_settings.py)
+from .kvlr_settings import kvlr_specs  # noqa: E402
+SPECS = SPECS + kvlr_specs(Spec, ON_OFF)
 BY_KEY = {s.key: s for s in SPECS}
 
 

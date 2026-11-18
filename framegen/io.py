@@ -597,6 +597,8 @@ class GLWindowSink:
         print(f"[display] upscaling with {self._name(self.mode)}{details[self.mode]}; u cycles "
               + " / ".join(self._name(m) for m in self.modes) + "; m opens the settings menu")
         self.timer = GpuTimer(GL)  # GPU time of the scale/draw step, reported on close
+        from .kvlr_obs import ObsFeed  # KVLR: OBS output (framegen/kvlr_obs.py)
+        self.kvlr_obs = ObsFeed(GL, sharpness)
 
         # Looks: which one is on (the settings, or the launcher's Looks page while it edits one) and its drawing.
         from .looks import LookState
@@ -1244,6 +1246,8 @@ class GLWindowSink:
             GL.glBlitFramebuffer(0, 0, self.w, self.h, x0, y0 + dh, x0 + dw, y0, GL.GL_COLOR_BUFFER_BIT,
                                  GL.GL_LINEAR)
         self.timer.end(q, f"{label} {dw}x{dh}")
+        if self.kvlr_obs is not None:  # KVLR: clean feed for OBS, before any menu or stats (framegen/kvlr_obs.py)
+            self.kvlr_obs.frame(self, target, x0, y0, dw, dh)
         if self.overlay and isinstance(text, MiniText):
             self._draw_mini(text, x0, y0, dh)
         elif self.overlay and text:
@@ -1421,6 +1425,8 @@ class GLWindowSink:
                       f"p95 {np.percentile(v, 95):.2f} ms (n={len(v)})")
         if self.fsr is not None:
             self.fsr.close()
+        if self.kvlr_obs is not None:  # KVLR
+            self.kvlr_obs.close()
         if self._bake is not None:
             self._bake[2].close()
             self.GL.glDeleteFramebuffers(1, [self._bake[1]])

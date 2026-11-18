@@ -26,6 +26,18 @@ The upstream `README.md`, `LICENSE` and `NOTICE` stay as they are.
    easy to read.
 3. Never edit `VERSION` or `RELEASES_REPO` in `installer/build.py`; `kvlr/build_kvlr.py` sets them.
 
+## KVLR features
+
+| Feature | Files | Upstream hooks (marked `KVLR:`) |
+|---|---|---|
+| Settings registry additions | `framegen/kvlr_settings.py` | `framegen/settings.py` (appends to `SPECS`), `framegen/menu.py` (launcher-only groups stay out of the in-video menu), one assertion in `tests/test_settings.py` |
+| OBS output: a clean picture (no menu, stats or notes) sent to OBS through Spout, 4K/1440p/1080p at 60 or 30 fps | `framegen/kvlr_obs.py` | `framegen/io.py` (made in `GLWindowSink.__init__`, called in `write()` before the UI is drawn, closed in `close()`); `SpoutGL==0.1.1` in `installer/requirements-runtime.txt` |
+
+OBS output: Settings → OBS output → On. In OBS, install the Spout2 plugin for OBS, add a **Spout2 Capture** source and
+pick **KVLR PS5**. Fullscreen on a 4K monitor with a 4K feed, OBS gets exactly what's on screen (look included);
+otherwise the feed is FSR-upscaled from the source frame, without the look. Off with HDR output.
+`FRAMEGEN_OBS_TEST=1` logs every send.
+
 ## Building and releasing
 
 - Build: `python kvlr/build_kvlr.py --kvlr N` gives version `<upstream>-kvlr.N` (for example `0.3.1-kvlr.1`).

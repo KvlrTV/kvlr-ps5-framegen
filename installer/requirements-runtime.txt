@@ -16,3 +16,5 @@ onnxruntime-directml==1.24.4
 tensorrt-cu12==11.4.0.106
 onnx==1.23.2
 onnxscript==0.7.2
+# KVLR: Spout, for the OBS output (framegen/kvlr_obs.py). BSD-3-Clause.
+SpoutGL==0.1.1
