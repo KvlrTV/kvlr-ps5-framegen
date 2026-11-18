@@ -23,6 +23,10 @@ ROOT = Path(__file__).resolve().parent.parent
 RELEASES_REPO = "KvlrTV/kvlr-ps5-framegen"
 SIGNING_KEY = Path(os.environ.get("KVLR_FRAMEGEN_SIGNING_KEY")
                    or Path.home() / ".kvlr-ps5-framegen" / "update-signing-key.xml")
+# VS 2022 Build Tools installs to Program Files (x86) on KvlrPC-NEW, which upstream's list doesn't include.
+EXTRA_CSC = [Path(r"C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin\Roslyn\csc.exe")]
+# Inputs taken from an installed SmoovPlay (see KVLR.md, "Building"), used when no --chiaki-* is given.
+INPUTS = Path(os.environ.get("KVLR_FRAMEGEN_INPUTS") or ROOT.parent / "kvlr-ps5-framegen-inputs")
 
 
 def load_upstream_build():
@@ -55,6 +59,11 @@ def main():
     build = load_upstream_build()
     build.RELEASES_REPO = RELEASES_REPO
     build.SIGNING_KEY = SIGNING_KEY
+    if hasattr(build, "CSC_CANDIDATES"):
+        build.CSC_CANDIDATES.extend(p for p in EXTRA_CSC if p not in build.CSC_CANDIDATES)
+    if (INPUTS / "chiaki-build" / "chiaki.exe").exists():
+        os.environ.setdefault("SMOOVPLAY_CHIAKI_BUILD", str(INPUTS / "chiaki-build"))
+        os.environ.setdefault("SMOOVPLAY_CHIAKI_SRC", str(INPUTS / "chiaki-ng"))
     sys.argv = [sys.argv[0]] + kvlr_args(sys.argv[1:], build.VERSION)
     print(f"[kvlr] releases repo {RELEASES_REPO}, signing key {SIGNING_KEY}, args {' '.join(sys.argv[1:])}")
     return build.main()

@@ -31,8 +31,19 @@ The upstream `README.md`, `LICENSE` and `NOTICE` stay as they are.
 - Build: `python kvlr/build_kvlr.py --kvlr N` gives version `<upstream>-kvlr.N` (for example `0.3.1-kvlr.1`).
   It runs upstream's `installer/build.py` unchanged, with the updater pointed at `KvlrTV/kvlr-ps5-framegen` and our
   own signing key. Upstream's build prerequisites apply (see `installer/README.md`).
+- Inputs (kept outside the repo in `..\kvlr-ps5-framegen-inputs\`, which the wrapper finds on its own;
+  `KVLR_FRAMEGEN_INPUTS` overrides). All of them come from an installed SmoovPlay
+  (`%LOCALAPPDATA%\Programs\SmoovPlay`), so nobody has to build chiaki-ng:
+  - `chiaki-build\`: the installed `chiaki\` folder without `licenses\`, `source\` and `LICENSE-AGPL-3.0.txt`.
+  - `chiaki-ng\`: `git clone --depth 1 -b v1.10.1 https://github.com/streetpea/chiaki-ng`, then `git apply` the installed
+    `chiaki\source\chiaki-ng-v1.10.1-frametap.patch` and copy its `frametap*` files into `gui\src` / `gui\include`.
+    Add `ffmpeg-kvlr-win64-gpl-shared-from-install\LICENSE.txt` (the installed `licenses\FFmpeg-LICENSE.txt`).
+  - `models\flownet_v4.22.lite.pkl` in the repo (gitignored), from the installed `app\models\`.
+  When upstream moves to a newer chiaki-ng, redo these from the newer install.
 - Signing key: `%USERPROFILE%\.kvlr-ps5-framegen\update-signing-key.xml`, made by the first build, never in git.
-  Installed copies only accept updates signed with it, so back it up.
+  Installed copies only accept updates signed with it. Backed up in KVLR Vault (kvlr-stack secrets, scope `infra`) as
+  `KVLR_FRAMEGEN_UPDATE_SIGNING_KEY`; on a new build PC restore it with
+  `kvlr-secret run --scope infra -- python -c "import os,pathlib; p=pathlib.Path.home()/'.kvlr-ps5-framegen'/'update-signing-key.xml'; p.parent.mkdir(exist_ok=True); p.write_text(os.environ['KVLR_FRAMEGEN_UPDATE_SIGNING_KEY'])"`.
 - Release: run `release.yml` from the Actions tab (it drafts the release), upload
   `installer/dist/SmoovPlay-Setup.exe` and its `.sig`, then publish.
 - The repo is private, so the in-app update check needs `SMOOVPLAY_GITHUB_TOKEN` (a read-only token) set on the
