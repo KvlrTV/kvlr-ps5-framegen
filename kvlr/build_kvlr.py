@@ -55,8 +55,38 @@ def kvlr_args(argv, upstream_version):
     return out
 
 
+def apply_branding(build):
+    """KVLR name, colours, logo and icon (kvlr/branding.py), on copies: upstream's files stay untouched."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import branding
+
+    build.BUILD.mkdir(parents=True, exist_ok=True)
+    root = branding.brand_launcher(build.HERE / "launcher", build.BUILD / "kvlr-brand")
+    build.icon_rgba = branding.icon_rgba
+    compile_exe, stage_payload = build.compile_exe, build.stage_payload
+
+    def branded_compile(out, sources, icon, resource=None):
+        mapped = [root / "launcher" / s.name if Path(s).parent == build.HERE / "launcher" else s for s in sources]
+        here, build.HERE = build.HERE, root  # compile_exe finds Ui.xaml and app.manifest under HERE
+        try:
+            return compile_exe(out, mapped, icon, resource)
+        finally:
+            build.HERE = here
+
+    def branded_stage(stage, *a, **kw):
+        stage_payload(stage, *a, **kw)
+        print(f"[kvlr] branded {branding.brand_app(stage)} app files")
+
+    build.compile_exe, build.stage_payload = branded_compile, branded_stage
+    print(f"[kvlr] branding: {branding.NAME}, launcher copies in {root}")
+
+
 def main():
     build = load_upstream_build()
+    if "--no-brand" in sys.argv:
+        sys.argv.remove("--no-brand")
+    else:
+        apply_branding(build)
     build.RELEASES_REPO = RELEASES_REPO
     build.SIGNING_KEY = SIGNING_KEY
     if hasattr(build, "CSC_CANDIDATES"):

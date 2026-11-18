@@ -33,6 +33,15 @@ The upstream `README.md`, `LICENSE` and `NOTICE` stay as they are.
 | Settings registry additions | `framegen/kvlr_settings.py` | `framegen/settings.py` (appends to `SPECS`), `framegen/menu.py` (launcher-only groups stay out of the in-video menu), one assertion in `tests/test_settings.py` |
 | OBS output: a clean picture (no menu, stats or notes) sent to OBS through Spout, 4K/1440p/1080p at 60 or 30 fps | `framegen/kvlr_obs.py` | `framegen/io.py` (made in `GLWindowSink.__init__`, called in `write()` before the UI is drawn, closed in `close()`); `SpoutGL==0.1.1` in `installer/requirements-runtime.txt` |
 
+**Branding** (`kvlr/branding.py`, `kvlr/brand/kvlr-mark.png`) touches no upstream file. At build time it brands
+*copies*: the launcher's C# and XAML are copied to `installer/build/kvlr-brand/` and compiled from there, and the
+staged app's Python is branded in place. It changes the visible name (KVLR PS5 Frame Gen; "KVLR PS5" on the rail),
+maps SmoovPlay's amber palette to KVLR's (cyan accent, gold, red, green, darker greys), swaps the rail logo and app
+icon for the KVLR mark, and credits SmoovPlay (MIT) in the rail footer. Names Windows and the disk use stay
+SmoovPlay's (install folder, shortcuts, registry key, `%APPDATA%\framegen`, `SMOOVPLAY_*`, the update-signature
+header), so updates and settings carry on. If upstream reshapes the rail logo or footer, the build stops with a
+message naming the function to update. `python kvlr/build_kvlr.py --no-brand` builds without it.
+
 OBS output: Settings → OBS output → On. In OBS, install the Spout2 plugin for OBS, add a **Spout2 Capture** source and
 pick **KVLR PS5**. Fullscreen on a 4K monitor with a 4K feed, OBS gets exactly what's on screen (look included);
 otherwise the feed is FSR-upscaled from the source frame, without the look. Off with HDR output.
