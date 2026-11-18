@@ -676,6 +676,12 @@ class Pipeline:
                         to_score = (key_frame, key_content)  # scored once the frame is on screen
                 elif action in (Action.PENDING, Action.HOLD):
                     out = key_frame
+                elif rhythm is not None and key_frame is not None:
+                    # Game frame rate 30 fps, and the lock called this tick a repeat. After a game holds a frame for
+                    # a third tick (it dipped below 30), the lock is a tick out of step until its vote moves, and this
+                    # tick carries the game's next frame: shown now, the in-between frame before it would follow on
+                    # the next tick, stepping back. The frame the lock last called new keeps the order, a tick late.
+                    out = key_frame
                 else:
                     out = tick.frame
             prev_key = key_gpu

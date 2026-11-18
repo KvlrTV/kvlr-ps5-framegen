@@ -45,11 +45,11 @@ Any 60 fps gameplay recording works for testing; the examples use `testdata\clip
 # Write the result to a file (NVENC):
 .venv\Scripts\python run.py testdata\clip_1080p60.mp4 --out out\clip_interp_60fps.mp4
 
-# Capture card (Experimental, not tested with a real card):
+# Capture card (Experimental; a player's AVerMedia Live Gamer 4K works, other cards are untested):
 .venv\Scripts\python run.py --list-devices
 .venv\Scripts\python run.py --capture 0 --display
 
-# Another app's window (Experimental, not tested with a real app): a preset, exe:NAME, hwnd:N or part of its title
+# Another app's window (Experimental, not yet confirmed with a real game stream): a preset, exe:NAME, hwnd:N or part of its title
 .venv\Scripts\python -m framegen.window --list
 .venv\Scripts\python run.py --source window --window ps-remote-play --display
 
@@ -135,11 +135,11 @@ made-up PCs.
 | RTX VSR quality | Low / Medium / High / Ultra | live |
 | Stats overlay, Fullscreen, VSync | On / Off | live |
 | Stats overlay style | Minimal (frames on screen, the game's rate, the delay, a keeping-up dot) / Detailed | live |
-| Window presentation | Standard / Low delay (Experimental: DXGI flip model, so a window skips the compositor's copy and G-Sync works in a window; fullscreen always uses Standard; `--present gl\|dxgi`) | next Play |
+| Window presentation | Standard / Low delay (Experimental: DXGI flip model, so a window skips the compositor's copy and G-Sync works in a window; fullscreen uses Standard; `--present gl\|dxgi`). With Windows' HDR on for the main display it's always DXGI, fullscreen as a borderless window: OpenGL's own fullscreen switches the display to SDR while it's in front (`FRAMEGEN_KEEP_HDR=0` turns this off) | next Play |
 | Minimise chiaki-ng | On / Off | live (PS5 Remote Play only) |
 | Sound in sync | On / Off (chiaki-ng holds its sound back to meet the picture) | live (PS5 Remote Play only) |
 | Simulate a 30 fps game | Off / On | live, this session only, never saved (any 60 Hz source: Remote Play, a capture card, or a file with `--raw`; `--test-mode`) |
-| Steady HUD | Off / On (off by default; results vary by game; RIFE only) | live |
+| Steady HUD | Off / On (off by default; results vary by game; RIFE and NVIDIA VFG, [`framegen/steady.py`](../framegen/steady.py)) | live |
 | Look, Which look | Off / On, and SmoovPlay's looks and yours (made on the launcher's Looks page) | live |
 | Looks in clips | Off / On (the look in saved instant replays too; only SmoovPlay's half of a before & after video) | live |
 | Interpolation model | RIFE 4.22 lite / NVIDIA VFG (RTX 40 and 50 series, optional download, see below) | **restart** |
@@ -264,7 +264,13 @@ work is captured as CUDA graphs, and TensorRT engines are built once per resolut
 Live over Remote Play at 90 fps, in test mode (a 60 fps game played as 30): 35.6 ms (p50) from a compressed frame
 reaching the frame tap to the buffer swap that puts it on screen, and 99% of in-between frames on time. 22.2 ms of
 that is the hold any 3× interpolator needs. Not included: the PS5's encoding, the network, chiaki-ng's own receiving
-and the display. A native 30 fps game over Remote Play hasn't been measured yet.
+and the display.
+
+A native 30 fps PS5 game, live over Remote Play at 90 fps (17 Nov 2026, Ethernet, two sessions of 32 and 67 s):
+35.8 and 35.4 ms (p50) and 45.1 and 41.5 ms (p95) on the same measure, with 94% and 99% of the extra in-between
+frames shown (the rest fell back to 60 fps for a moment). The tick that draws a real frame's two in-between frames
+took 17.6 to 17.8 ms (p50), upload and the first one's display included. Over Wi-Fi, frames that arrive late and
+in clumps lower the share of extra frames shown (78% in one session).
 
 Quality: native 60 fps game recordings → keep the even frames (the "30 fps game") → interpolate → compare
 with the real odd frames. 3% random hitches injected. PyTorch fp16.
@@ -296,21 +302,25 @@ Timing from a recorded clip, not a live stream, paced at 60 Hz with the OpenGL w
 <details>
 <summary><b>Known limits</b></summary>
 
-- **Capture cards are Experimental.** The code is there (`--capture`), but it hasn't been tested with a real
-  card. On a PS5, turn off HDCP while you use the card (Settings → System → HDMI) and keep it at 60 Hz, not 120 Hz.
-- **Window capture is Experimental.** Not tested with a real app. The app's sound comes ahead of the smooth
+- **Capture cards are Experimental.** A player's AVerMedia Live Gamer 4K (GC573) works since 0.3.1, its sound from
+  0.3.2 (not yet confirmed); other cards are tested with recordings standing in for one (`--capture`). On a PS5, turn off HDCP while you use the card (Settings → System → HDMI) and keep it at 60 Hz, not 120 Hz.
+- **Window capture is Experimental.** Not yet confirmed with a real game stream; 0.3.1 recognises the current Xbox
+  app. The app's sound comes ahead of the smooth
   picture and its window has to stay visible. In Windows HDR mode, on a rotated monitor or without an NVIDIA card,
   frames go through the CPU instead (a few ms more).
-- **HDR is Experimental.** Tried with a stand-in for a PS5's HDR stream (`frametap_fake.py --hdr`), not a real
-  one yet. HDR output has been checked by reading back the 10-bit buffer it presents (on an SDR display, with
-  `FRAMEGEN_HDR_FORCE=1`), not on an HDR screen. Capture cards and window capture stay SDR.
+- **HDR is Experimental.** A contributor has played a real PS5 HDR stream with HDR output on an HDR monitor
+  (Windows 11, RTX 5070 Ti). The tests use a stand-in HDR stream (`frametap_fake.py --hdr`) and read back the 10-bit
+  buffer HDR output presents (on an SDR display, with `FRAMEGEN_HDR_FORCE=1`). Capture cards and window capture
+  stay SDR.
 - **4K** input doesn't fit in real time, even with TensorRT.
 - **90/120 Hz to a file** (`--out`) isn't supported; those rates are window-only.
 - **Soft scene cuts** between two dark shots can occasionally slip past the cut detector and show one blended frame.
 - **Packaging**: the installer is unsigned ([SmartScreen warns](../README.md#smartscreen)) and
   about 140 MB, because chiaki-ng is embedded. The launcher updates itself from GitHub releases.
 - In a window, Standard presentation goes through the Windows compositor, which adds about 12 ms. Fullscreen (`f`)
-  avoids it, and so does Window presentation: Low delay (Experimental), in a window too.
+  avoids it, and so does Window presentation: Low delay (Experimental), in a window too. With Windows' HDR on, the
+  window always presents through DXGI and fullscreen is a borderless window, so the display stays in HDR (OpenGL's
+  own fullscreen switched it to SDR while the window was in front, and the colours changed with every Alt+Tab).
 </details>
 
 
@@ -325,11 +335,11 @@ Timing from a recorded clip, not a live stream, paced at 60 Hz with the OpenGL w
   frames before it are shown. When the graphics card falls behind for a moment, SmoovPlay drops to 60 fps rather
   than add delay.
 - **1080p.** Remote Play arrives at 1080p, so the picture is a little softer than HDMI straight from the console.
-- **HDR** (*Experimental*, from 0.2.0: Settings → HDR, off by default). For a PS5 streaming in HDR: pick the H.265
-  HDR codec in chiaki-ng, then turn HDR on. **On, shown in SDR** gives the stream its real colours on any monitor.
-  **On, HDR output** keeps it HDR all the way to a monitor with Windows' HDR on, with Looks and RTX VSR off. Both
-  have been tried with a stand-in for a PS5's HDR stream, not a real one yet, and HDR output has been checked by
-  reading back the 10-bit picture it sends, not on an HDR screen. Instant replay clips are saved in SDR either way.
+- **HDR** (*Experimental*, Settings → HDR, off by default). For a PS5 streaming in HDR: pick the H.265 HDR codec in
+  chiaki-ng, then turn HDR on. **On, shown in SDR** gives the stream its real colours on any monitor. **On, HDR
+  output** keeps it HDR all the way to a monitor with Windows' HDR on, with Looks and RTX VSR off. A contributor has
+  played a real PS5 HDR stream this way on an HDR monitor, and since 0.3.2 fullscreen keeps Windows' HDR on instead
+  of switching the display to SDR. Instant replay clips are saved in SDR either way.
 - **Some wobble.** HUD text over fast motion, very fast camera turns and thin objects crossing each other can wobble
   a little. Press **I** in the video window to compare with frame generation off.
 - **Sound and picture stay in step.** chiaki-ng plays the sound, and SmoovPlay tells it to hold the sound back

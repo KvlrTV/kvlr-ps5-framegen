@@ -509,8 +509,12 @@ class CardSource:
             try:  # a small sound buffer: DirectShow's default is half a second or more
                 container = av.open(f"video={device}:audio={audio_device}", format="dshow",
                                     options={**opts, "audio_buffer_size": "20"})
-            except Exception as e:  # noqa: BLE001 - busy or gone: the picture on its own
-                print(f"[capture] couldn't open the sound device ({str(e)[:120]}); playing without sound")
+            except Exception as e:  # noqa: BLE001 - busy, gone, or no sound: the picture on its own
+                if audio_device == device:
+                    print(f"[capture] no sound from the card itself ({str(e)[:120]}): playing without sound; pick "
+                          "a sound device in the launcher, or with --capture-audio (see --list-devices)")
+                else:
+                    print(f"[capture] couldn't open the sound device ({str(e)[:120]}); playing without sound")
         if container is None:
             container = _open_card(device, opts)
         return cls(container, f"Capture card ({device})", live=True, range_hint=mode.range, audio=audio, **kw)

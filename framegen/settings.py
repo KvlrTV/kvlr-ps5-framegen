@@ -119,7 +119,9 @@ SPECS: tuple[Spec, ...] = (
     # 96% of the visibly wobbling HUD pixels for 0.06 dB over the whole frame, at about 0.5 ms per real frame plus
     # 0.15 per AI frame. On three sections of PS5 GTA V it cost 0.1 to 1.2 dB over the whole frame. Off by default:
     # judged by eye (scripts/steady_hud_compare.py), RIFE alone looked as good.
-    Spec("steady_hud", "Steady HUD", (False, True), False, ON_OFF, group="Smoothness", applies=("model", ("4.22.lite",)),
+    # framegen/steady.py, after RIFE or NVIDIA VFG alike (with VFG, each in-between frame is also converted to apply it).
+    Spec("steady_hud", "Steady HUD", (False, True), False, ON_OFF, group="Smoothness",
+         applies=("model", ("4.22.lite", "vfg")),
          help="Keeps the parts of the picture that don't move, like the map, health bar and subtitles, exactly as "
               "the game drew them, so they don't wobble when the scene behind them moves. Results vary by game, and "
               "often there's no visible difference. If a small, fast object ever flickers, turn it off.",
@@ -211,9 +213,9 @@ SPECS: tuple[Spec, ...] = (
                 "dxgi": "Hands frames over the way games do, so a window is about as quick as fullscreen and G-Sync "
                         "works. Experimental."},
          help="How the video reaches the screen. In a window, Standard goes through the Windows compositor, which "
-              "adds about 12 ms and keeps G-Sync and FreeSync from working (fullscreen doesn't). Low delay hands "
-              "frames over the way games do, for playing in a window; fullscreen always uses Standard, which is "
-              "already as quick there. Experimental; applies the next time you press Play.",
+              "adds about 12 ms and keeps G-Sync and FreeSync from working. Low delay hands frames over the way games "
+              "do, for playing in a window; fullscreen uses Standard, as quick there. With Windows' HDR on, it's always "
+              "Low delay, so fullscreen keeps HDR on. Experimental; applies the next time you press Play.",
          impact={"speed": "Low delay should save the 12 ms a window adds. Still being measured."}),
     Spec("overlay", "Stats overlay", (True, False), True, ON_OFF, group="Display",
          help="Numbers in a corner of the video: how many frames a second are on screen, the game's own frame rate, "

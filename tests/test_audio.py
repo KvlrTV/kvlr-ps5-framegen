@@ -146,3 +146,36 @@ def test_no_sound_wanted_or_none_there(tmp_path):
     assert not src.can_delay_audio() and src.astream is None
     assert len(list(src)) == 12
     src.close()
+
+
+def test_a_card_with_no_sound_device_of_its_own_tries_its_video_device_for_sound(monkeypatch):
+    """The AVerMedia GC573 (issue 9): its sound is a pin on the video device, so Windows lists no sound device."""
+    import types
+    import run
+    from framegen import capture as c
+    name = "AVerMedia HD Capture GC573 1"
+    monkeypatch.setattr(c, "list_devices", lambda: [c.Device(name, "video"), c.Device("OBS Virtual Camera", "video"),
+                                                    c.Device("Microphone (USB Audio)", "audio")])
+    monkeypatch.setattr(c.CardSource, "open", classmethod(lambda cls, *args, **kw: kw))
+    monkeypatch.setattr(run, "sound_player", lambda: object())
+    a = types.SimpleNamespace(capture_backend="pyav", capture_colour="auto", capture_audio="auto", capture=name,
+                              capture_format="auto", capture_fps=60.0)
+    assert run.open_capture(a, 1920, 1080, None)["audio_device"] == name
+
+
+def test_no_sound_on_the_video_device_plays_the_picture_alone(monkeypatch, capsys):
+    import av
+    from framegen import capture as c
+    name = "AVerMedia HD Capture GC573 1"
+    tried = []
+
+    def fake_open(url, **kw):
+        tried.append(url)
+        raise av.error.OSError(5, "Could not find audio only device with name")
+
+    monkeypatch.setattr(av, "open", fake_open)
+    monkeypatch.setattr(c, "_open_card", lambda device, opts: "picture only")
+    monkeypatch.setattr(c.CardSource, "__init__", lambda self, container, *a, **kw: setattr(self, "container", container))
+    src = c.CardSource.open(name, mode=c.Mode("nv12", True, 1920, 1080, 60.0, 60.0), audio_device=name, audio=object())
+    assert tried == [f"video={name}:audio={name}"] and src.container == "picture only"
+    assert "no sound from the card itself" in capsys.readouterr().out

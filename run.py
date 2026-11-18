@@ -176,8 +176,11 @@ def open_capture(a, w: int, h: int, test):
         if a.capture_audio == "auto":
             audio_device = capture.pick_audio(name, devices)
             if audio_device is None:
-                print("[capture] no sound device named like the card, so no sound: pick one with --capture-audio "
-                      "(see --list-devices)")
+                # Some cards carry their sound on the video device itself (in OBS: Video Capture Device with no custom
+                # audio device), not as a sound device of their own, e.g. the AVerMedia GC573: try that. FFmpeg looks
+                # for a video device with a sound pin by that name; CardSource.open plays the picture alone if not.
+                audio_device = name
+                print("[capture] no sound device named like the card: trying the card's own sound")
         elif a.capture_audio.isdigit() and int(a.capture_audio) < len(audio):
             audio_device = audio[int(a.capture_audio)]
         else:
@@ -530,7 +533,7 @@ def main() -> int:
         rows.clear()
         rows.update(unavailable)
         if (test_model or settings.model) == "vfg":
-            for k in ("engine", "motion", "steady_hud"):
+            for k in ("engine", "motion"):
                 rows.setdefault(k, "Not used with NVIDIA VFG.")
         else:
             rows.setdefault("vfg_quality", vfg_why[0] or "Only used with NVIDIA VFG.")
@@ -581,6 +584,9 @@ def main() -> int:
             unavailable.pop(k, None)
             if window is not None:
                 window.unavailable.pop(k, None)
+        if getattr(window, "keep_hdr", False):  # on 8-bit DXGI instead, as Windows' HDR is on: "present" stays fixed
+            window.note_presentation()
+            unavailable["present"] = window.unavailable["present"]
         interp = None
         gc.collect()
         torch.cuda.empty_cache()
