@@ -37,10 +37,38 @@ The upstream `README.md`, `LICENSE` and `NOTICE` stay as they are.
 *copies*: the launcher's C# and XAML are copied to `installer/build/kvlr-brand/` and compiled from there, and the
 staged app's Python is branded in place. It changes the visible name (KVLR PS5 Frame Gen; "KVLR PS5" on the rail),
 maps SmoovPlay's amber palette to KVLR's (cyan accent, gold, red, green, darker greys), swaps the rail logo and app
-icon for the KVLR mark, and credits SmoovPlay (MIT) in the rail footer. Names Windows and the disk use stay
+icon for the KVLR mark with neon controller symbols (triangle, circle, cross, square) round the tile's edge (KR alone
+at 32 px and below; generic shapes, no PlayStation logo), and credits SmoovPlay (MIT) in the rail footer. Names Windows and the disk use stay
 SmoovPlay's (install folder, shortcuts, registry key, `%APPDATA%\framegen`, `SMOOVPLAY_*`, the update-signature
 header), so updates and settings carry on. If upstream reshapes the rail logo or footer, the build stops with a
 message naming the function to update. `python kvlr/build_kvlr.py --no-brand` builds without it.
+
+**One-click PS5 connect** (`framegen/kvlr_settings.py` settings `ps5_console`, `ps5_codec`, `ps5_bitrate`, launcher-only
+group "PS5 connection"; `installer/launcher/KvlrChiaki.cs`; hooks marked `KVLR:` in `Core.cs` before the Play flow's
+`Chiaki.Start` and in `Ui.cs` `OpenChiaki`). Before Play starts chiaki-ng, the launcher writes the choices into
+chiaki-ng's saved settings (`HKCU\Software\Chiaki\Chiaki\settings`): `auto_connect_mac` = the chosen registered
+console's `server_mac`, so chiaki-ng finds it, wakes it and streams straight away; codec H.265 (H.265 HDR with HDR
+output on, so the two always match); local bitrate. "Ask each time" removes `auto_connect_mac`, and the guide's Open
+chiaki-ng removes it too so the console list (and Register) shows. The console list comes from chiaki-ng's
+`registered_hosts`, read when the Settings page loads. The Play page shows the chosen console as a chip with its state
+(Ready / Resting / Not found, from a PlayStation discovery broadcast every 6 s while the page is up) and says Play
+connects to it by itself (`installer/launcher/KvlrUi.cs`; hooks in `Ui.cs` `BuildChips` and the idle subtitle).
+**Stop ends Remote Play** (setting `ps5_on_stop`: end / rest / keep, default end). After a Remote Play session stops
+or ends, the launcher closes the chiaki-ng it started, with chiaki-ng's `disconnect_action` set first (`sleep` asks
+the PS5 into rest mode, `nothing` leaves it on), so the stream doesn't carry on in chiaki-ng's window. While playing,
+**Rest PS5** next to the console chip does the rest-mode stop once (`KvlrUi.cs` `KvlrOnState`, hook in `Ui.cs`'s play
+state handler; `KvlrChiaki.EndRemotePlay`).
+
+**Hold Esc to stop** (`framegen/kvlr_keys.py`; hooks in `io.py` `_on_key` and `_events`): Esc or Q must be held for
+5 s, then a confirmation asks (Enter stops, any other key keeps playing, it lapses after 8 s); the menu keeps its own
+Esc. When Stop ends Remote Play, `run.py` no longer restores chiaki-ng's window on exit (marked hook), so nothing
+jumps to another monitor before the launcher closes it. The on-screen wording ("Esc: quit" and the like) is swapped
+by the branding layer's `TEXT_SWAPS`.
+
+**One taskbar button** (`installer/launcher/KvlrTaskbar.cs`, hook in `Ui.cs` `Wire`): the launcher, the pipeline's
+video window and the chiaki-ng it started get the same `System.AppUserModel.ID` (`KvlrTV.KvlrPS5FrameGen`) plus the
+relaunch name and KVLR icon, set through each window's property store every 2 s, so Windows groups them under one
+button. The video window's own icons (`framegen/assets/icon_*.png`) are swapped for the KVLR icon by the branding.
 
 OBS output: Settings → OBS output → On. In OBS, install the Spout2 plugin for OBS, add a **Spout2 Capture** source and
 pick **KVLR PS5**. Fullscreen on a 4K monitor with a 4K feed, OBS gets exactly what's on screen (look included);

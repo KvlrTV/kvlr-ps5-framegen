@@ -1146,7 +1146,11 @@ namespace SmoovPlay
             OnLine(line);
             if (line.StartsWith("[chiaki] waiting for chiaki-ng"))
             {
-                if (Source == "chiaki" && Chiaki.Ours(p) == null) Chiaki.Start(p, OnLine);
+                if (Source == "chiaki" && Chiaki.Ours(p) == null)
+                {
+                    KvlrChiaki.BeforePlay(OnLine);  // KVLR: one-click connect (KvlrChiaki.cs)
+                    Chiaki.Start(p, OnLine);
+                }
                 OnState(PlayState.Waiting, null);
             }
             else if (line.StartsWith("[tap] waiting for an app"))  // the frame tap: the app starts when the player likes

@@ -784,7 +784,9 @@ def main() -> int:
                 s.hide()
         if kind == "chiaki" and hasattr(src, "set_audio_delay"):
             src.set_audio_delay(0)  # chiaki-ng's sound back on time (it would also lapse once we stop)
-        if hidden:
+        # KVLR: when Stop ends Remote Play the launcher closes chiaki-ng next, so it stays out of sight
+        # (framegen/kvlr_settings.py ps5_on_stop)
+        if hidden and not (kind == "chiaki" and getattr(settings, "ps5_on_stop", "keep") != "keep"):
             from framegen.winutil import SW_RESTORE, show
             show(hidden, SW_RESTORE)
         if replay is not None:

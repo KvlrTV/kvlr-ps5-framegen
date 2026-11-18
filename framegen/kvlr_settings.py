@@ -9,11 +9,63 @@ OBS_SIZES = {"2160": (3840, 2160), "1440": (2560, 1440), "1080": (1920, 1080)}
 OBS_SENDER = "KVLR PS5"  # the name OBS's Spout2 Capture source lists
 # Set once and changed on the launcher's Settings page (live, while playing too), so they stay out of the in-video
 # menu, which has to fit a 1080p picture with room for upstream's next settings (tests/test_settings.py).
-MENU_HIDDEN_GROUPS = {"OBS output"}
+MENU_HIDDEN_GROUPS = {"OBS output", "PS5 connection"}
+
+# chiaki-ng's saved settings (Qt QSettings in the registry). The launcher (installer/launcher/KvlrChiaki.cs) writes the
+# "PS5 connection" choices there just before Play starts chiaki-ng.
+CHIAKI_KEY = r"Software\Chiaki\Chiaki"
+
+
+def chiaki_consoles() -> tuple:
+    """Nicknames of the consoles registered in chiaki-ng, in its order; () when there are none or no registry."""
+    try:
+        import winreg
+        names = []
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, CHIAKI_KEY + r"\registered_hosts") as k:
+            n = int(winreg.QueryValueEx(k, "size")[0])
+            for i in range(1, n + 1):
+                try:
+                    with winreg.OpenKey(k, str(i)) as h:
+                        name = str(winreg.QueryValueEx(h, "server_nickname")[0]).strip()
+                except OSError:
+                    continue
+                if name and name not in names and name != "ask":
+                    names.append(name)
+        return tuple(names)
+    except (OSError, ValueError, ImportError):
+        return ()
 
 
 def kvlr_specs(Spec, on_off: dict) -> tuple:
+    consoles = chiaki_consoles()
     return (
+        Spec("ps5_console", "Connect to", ("ask",) + consoles, "ask",
+             {"ask": "Ask each time"} | {c: c for c in consoles}, group="PS5 connection",
+             help="Play connects to this PS5 by itself: chiaki-ng finds it, wakes it from rest mode if it needs to, "
+                  "and goes straight into the stream, then gets out of the way. \"Ask each time\" shows "
+                  "chiaki-ng's console list instead. Register a console first (Connect your PS5); Open chiaki-ng "
+                  "on that page always shows the list.",
+             hints={"ask": "chiaki-ng's console list, as before"} | {c: "One click: wakes it and connects" for c in consoles}),
+        Spec("ps5_on_stop", "When you stop", ("end", "rest", "keep"), "end",
+             {"end": "End Remote Play", "rest": "End Remote Play and rest the PS5", "keep": "Keep streaming in chiaki-ng"},
+             group="PS5 connection",
+             help="What Stop (or Esc in the video window) does to the PS5's stream. End Remote Play closes chiaki-ng "
+                  "and leaves the PS5 on. With rest, the PS5 also goes into rest mode. Keep streaming leaves "
+                  "chiaki-ng's own window playing, without frame generation. While playing, Rest PS5 on the Play "
+                  "page does the rest-mode stop once.",
+             hints={"end": "Closes chiaki-ng; the PS5 stays on", "rest": "Closes chiaki-ng and the PS5 rests",
+                    "keep": "chiaki-ng's window carries on"}),
+        Spec("ps5_codec", "Stream codec", ("auto", "h264", "keep"), "auto",
+             {"auto": "Auto", "h264": "H.264", "keep": "Leave as set in chiaki-ng"}, group="PS5 connection",
+             help="Auto asks the PS5 for H.265, or H.265 HDR when HDR output is on, so the stream always matches "
+                  "the HDR setting (a mismatch shows washed-out or magenta colours). H.264 is for older graphics "
+                  "cards. Applies from the next Play."),
+        Spec("ps5_bitrate", "Stream bitrate", ("100", "50", "30", "keep"), "keep",
+             {"100": "100 Mbps", "50": "50 Mbps", "30": "30 Mbps", "keep": "Leave as set in chiaki-ng"},
+             group="PS5 connection",
+             help="How much picture data the PS5 is asked to send on your home network. Higher means fewer "
+                  "compression marks for the AI frames and the upscaler to work from; 100 Mbps suits a wired "
+                  "connection, 30 to 50 Mbps a good 5 GHz Wi-Fi. Applies from the next Play."),
         Spec("obs_output", "OBS output", (False, True), False, on_off, group="OBS output",
              help="Sends a clean copy of the picture to OBS through Spout: no menu, stats or notes on it. In OBS, "
                   f"add a Spout2 Capture source and pick \"{OBS_SENDER}\" (needs the Spout2 plugin for OBS). "

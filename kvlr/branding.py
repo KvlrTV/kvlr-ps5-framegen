@@ -21,6 +21,7 @@ Kept as is on purpose: install folder, Start-menu shortcut file names, %APPDATA%
 from __future__ import annotations
 
 import io
+import math
 import re
 import shutil
 import tokenize
@@ -39,6 +40,21 @@ RAIL_NAME = "KVLR PS5"
 NAME_RX = re.compile(r"(?<![\w\\/.\-])SmoovPlay(?![\w\-/\\])(?!\.\w)")  # "SmoovPlay." ends a sentence; ".exe" doesn't
 CS_KEEP_LINE = re.compile(r"Path\.Combine|\.Equals\(|Uninstall\\\\|GetFolderPath")
 CS_SKIP_FILES = {"UpdateSignature.cs"}
+# Wording that follows KVLR behaviour (Esc is held 5 s and confirmed: framegen/kvlr_keys.py), swapped inside string
+# literals of the launcher and the app, after the name.
+TEXT_SWAPS = (
+    ("Esc: quit", "Hold Esc: stop"),
+    (". Esc quits", ". Hold Esc to stop"),
+    ("F goes fullscreen and Esc stops", "F goes fullscreen and holding Esc stops"),
+)
+
+
+def swap_text(t: str) -> str:
+    for a, b in TEXT_SWAPS:
+        t = t.replace(a, b)
+    return t
+
+
 CS_STRING = re.compile(r'@?\$?"(?:[^"\\\n]|\\.)*"')
 
 # SmoovPlay -> KVLR (kvlrtv.com tokens: cyan #2fe4f2, orange #ff8a1e, gold #ffc94a, red #ff3b3b, green #2fe45a,
@@ -79,7 +95,7 @@ def brand_cs(text: str) -> str:
     out = []
     for line in text.splitlines(keepends=True):
         if not CS_KEEP_LINE.search(line):
-            line = CS_STRING.sub(lambda m: NAME_RX.sub(NAME, m.group(0)), line)
+            line = CS_STRING.sub(lambda m: swap_text(NAME_RX.sub(NAME, m.group(0))), line)
         line = CS_STRING.sub(lambda m: recolour(m.group(0)), line)
         out.append(line)
     return "".join(out)
@@ -110,7 +126,7 @@ def brand_python(text: str) -> str:
         starts.append(starts[-1] + len(ln))
     edits = []
     for t in toks:
-        if t.type in kinds and "SmoovPlay" in t.string:
+        if t.type in kinds and ("SmoovPlay" in t.string or any(a in t.string for a, _ in TEXT_SWAPS)):
             line = lines[t.start[0] - 1]
             if re.search(r'/\s*["\']SmoovPlay["\']', line):
                 continue  # a folder (Videos\SmoovPlay)
@@ -118,7 +134,7 @@ def brand_python(text: str) -> str:
             b = starts[t.end[0] - 1] + t.end[1]
             edits.append((a, b))
     for a, b in reversed(edits):
-        text = text[:a] + NAME_RX.sub(NAME, text[a:b]) + text[b:]
+        text = text[:a] + swap_text(NAME_RX.sub(NAME, text[a:b])) + text[b:]
     return text
 
 
@@ -149,22 +165,82 @@ def mark_path_data(box: tuple[float, float, float, float]) -> str:
     return "F0 " + " ".join(parts)
 
 
+# The app icon and rail logo: the KR mark in the middle of a dark tile, with neon controller symbols (triangle,
+# circle, cross, square) scattered round its edges and cut off by them, glowing, and the tile's cyan edge on top.
+# The symbols are generic shapes in KVLR's neon colours; there's no PlayStation logo or wordmark in it.
+MARK_BOX = (205, 285, 614, 454)        # the KR mark's box when the symbols are drawn (x, y, w, h)
+MARK_BOX_SMALL = (150, 210, 724, 604)  # the KR mark alone, for 32 px and below
+SYMBOL_WIDTH = 26
+# (kind, colour, centre x, centre y, size (half-width or radius), rotation in degrees)
+SYMBOLS = (
+    ("triangle", "#3DF2C2", 165, 150, 120, -14),
+    ("circle", "#FF4FC8", 905, 120, 105, 0),
+    ("cross", "#8A7CFF", 70, 610, 95, 12),
+    ("square", "#FFC94A", 930, 590, 90, 22),
+    ("circle", "#FF5A3C", 250, 960, 110, 0),
+    ("triangle", "#2FE4F2", 790, 950, 115, 18),
+    ("cross", "#FF4FC8", 560, 70, 62, -8),
+)
+
+
+def _symbol_polylines(kind: str, cx: float, cy: float, size: float, angle: float) -> list[list[tuple[float, float]]]:
+    """Open or closed outlines (lists of points) for a symbol; the circle is its own case."""
+    a = math.radians(angle)
+    ca, sa = math.cos(a), math.sin(a)
+
+    def rot(x, y):
+        return (cx + x * ca - y * sa, cy + x * sa + y * ca)
+
+    if kind == "triangle":
+        h = size
+        return [[rot(0, -h), rot(h * 0.95, h * 0.72), rot(-h * 0.95, h * 0.72), rot(0, -h)]]
+    if kind == "square":
+        h = size * 0.82
+        return [[rot(-h, -h), rot(h, -h), rot(h, h), rot(-h, h), rot(-h, -h)]]
+    if kind == "cross":
+        h = size * 0.8
+        return [[rot(-h, -h), rot(h, h)], [rot(h, -h), rot(-h, h)]]
+    return []
+
+
+def symbols_xaml(indent: str) -> str:
+    out = []
+    for kind, colour, cx, cy, size, angle in SYMBOLS:
+        if kind == "circle":
+            data = (f"M {cx - size:.1f},{cy:.1f} A {size},{size} 0 1 1 {cx + size:.1f},{cy:.1f} "
+                    f"A {size},{size} 0 1 1 {cx - size:.1f},{cy:.1f} Z")
+        else:
+            data = " ".join("M " + " L ".join(f"{x:.1f},{y:.1f}" for x, y in line)
+                            for line in _symbol_polylines(kind, cx, cy, size, angle))
+        out.append(f'{indent}    <Path Stroke="{colour}" StrokeThickness="{SYMBOL_WIDTH}" StrokeLineJoin="Round" '
+                   f'StrokeStartLineCap="Round" StrokeEndLineCap="Round" Data="{data}">'
+                   f'<Path.Effect><DropShadowEffect Color="{colour}" ShadowDepth="0" BlurRadius="40" Opacity="0.9"/>'
+                   f'</Path.Effect></Path>\n')
+    return "".join(out)
+
+
 def replace_logo(xaml: str) -> str:
     start = xaml.find('<Canvas Width="1024" Height="1024">')
     end = xaml.find("</Canvas>", start)
     if start < 0 or end < 0 or xaml.find('<Canvas Width="1024" Height="1024">', end) >= 0:
         raise SystemExit("[kvlr] Ui.xaml's logo Canvas changed upstream; update kvlr/branding.py replace_logo()")
     indent = " " * (xaml.rfind("\n", 0, start) and start - xaml.rfind("\n", 0, start) - 1)
-    data = mark_path_data((150, 210, 724, 604))
+    data = mark_path_data(MARK_BOX)
     new = (f'<Canvas Width="1024" Height="1024">\n'
-           f'{indent}  <!-- KVLR: the KVLR mark (kvlr/brand/kvlr-mark.png, traced by kvlr/branding.py) -->\n'
-           f'{indent}  <Rectangle Width="1024" Height="1024" RadiusX="228" RadiusY="228" Stroke="{EDGE}" '
-           f'StrokeThickness="36">\n'
+           f'{indent}  <!-- KVLR: the KR mark (kvlr/brand/kvlr-mark.png, traced) with neon controller symbols round the '
+           f'edge (kvlr/branding.py) -->\n'
+           f'{indent}  <Rectangle Width="1024" Height="1024" RadiusX="228" RadiusY="228">\n'
            f'{indent}    <Rectangle.Fill><LinearGradientBrush StartPoint="0,0" EndPoint="1,1">'
            f'<GradientStop Offset="0" Color="{TILE_TOP}"/><GradientStop Offset="1" Color="{TILE_BOTTOM}"/>'
            f'</LinearGradientBrush></Rectangle.Fill>\n'
            f'{indent}  </Rectangle>\n'
+           f'{indent}  <Canvas Width="1024" Height="1024">\n'
+           f'{indent}    <Canvas.Clip><RectangleGeometry Rect="0,0,1024,1024" RadiusX="228" RadiusY="228"/></Canvas.Clip>\n'
+           f'{symbols_xaml(indent)}'
+           f'{indent}  </Canvas>\n'
            f'{indent}  <Path Fill="{MARK_FILL}" Data="{data}"/>\n'
+           f'{indent}  <Rectangle Width="1024" Height="1024" RadiusX="228" RadiusY="228" Stroke="{EDGE}" '
+           f'StrokeThickness="36"/>\n'
            f'{indent}')
     return xaml[:start] + new + xaml[end:]
 
@@ -174,9 +250,32 @@ def _hex_bgr(h: str) -> tuple[int, int, int]:
     return int(h[4:6], 16), int(h[2:4], 16), int(h[0:2], 16)
 
 
+def _draw_symbols(n: int) -> np.ndarray:
+    """The symbols at n x n (1024 scale), BGRA float, with a soft glow under each line."""
+    s = 4  # supersampled for clean edges
+    layer = np.zeros((n * s, n * s, 3), np.float32)
+    lines = np.zeros((n * s, n * s, 3), np.float32)
+    for kind, colour, cx, cy, size, angle in SYMBOLS:
+        col = _hex_bgr(colour)
+        w = SYMBOL_WIDTH * s
+        if kind == "circle":
+            cv2.circle(lines, (round(cx * s), round(cy * s)), round(size * s), col, w, cv2.LINE_AA)
+        else:
+            for line in _symbol_polylines(kind, cx, cy, size, angle):
+                pts = np.array([[round(x * s), round(y * s)] for x, y in line], np.int32)
+                cv2.polylines(lines, [pts], False, col, w, cv2.LINE_AA)
+                for x, y in pts:  # round caps and joins
+                    cv2.circle(lines, (int(x), int(y)), w // 2, col, -1, cv2.LINE_AA)
+    lines = cv2.resize(lines, (n, n), interpolation=cv2.INTER_AREA)
+    glow = cv2.GaussianBlur(lines, (0, 0), 22) * 1.6
+    layer = np.maximum(lines, np.clip(glow, 0, 255) * 0.9)
+    alpha = np.clip(layer.max(axis=2), 0, 255)
+    return np.dstack([layer, alpha])
+
+
 def icon_rgba(size: int) -> np.ndarray:
-    """The app icon at one size, BGRA: the KVLR mark on a dark rounded tile with a cyan edge (drawn at 1024 and
-    scaled down, so every size matches the rail logo)."""
+    """The app icon at one size, BGRA, matching the rail logo: from 40 px the KR mark with the neon symbols round
+    the edge; at 32 px and below the KR mark alone, larger, since the symbols would only blur together there."""
     n = 1024
     yy, xx = np.mgrid[0:n, 0:n].astype(np.float32)
     t = (xx + yy) / (2 * n - 2)
@@ -189,20 +288,25 @@ def icon_rgba(size: int) -> np.ndarray:
     cv2.rectangle(tile, (0, r), (n - 1, n - 1 - r), 255, -1)
     for cx, cy in ((r, r), (n - 1 - r, r), (r, n - 1 - r), (n - 1 - r, n - 1 - r)):
         cv2.circle(tile, (cx, cy), r, 255, -1, cv2.LINE_AA)
-    # 36 px edge, as the rail logo's StrokeThickness; outside the image counts as empty, so the sides erode too
-    inner = cv2.erode(tile, np.ones((3, 3), np.uint8), iterations=36, borderType=cv2.BORDER_CONSTANT, borderValue=0)
-    edge = cv2.subtract(tile, inner)
-    img[..., :3][edge > 0] = _hex_bgr(EDGE)
-    img[..., 3] = tile
+    small = size <= 32
+    if not small:  # symbols, cut off by the tile
+        sym = _draw_symbols(n)
+        k = (sym[..., 3:4] / 255.0) * (tile[..., None] / 255.0)
+        img[..., :3] = img[..., :3] * (1 - k) + sym[..., :3] * k
     a = mark_mask()
     h, w = a.shape
-    box = (150, 210, 724, 604)
+    box = MARK_BOX_SMALL if small else MARK_BOX
     s = min(box[2] / w, box[3] / h)
     mw, mh = round(w * s), round(h * s)
     m = cv2.resize(a, (mw, mh), interpolation=cv2.INTER_AREA).astype(np.float32) / 255.0
     ox, oy = round(box[0] + (box[2] - mw) / 2), round(box[1] + (box[3] - mh) / 2)
     region = img[oy:oy + mh, ox:ox + mw, :3]
     region[:] = region * (1 - m[..., None]) + np.array(_hex_bgr(MARK_FILL), np.float32) * m[..., None]
+    # 36 px cyan edge on top, as the rail logo's StrokeThickness; outside the image counts as empty
+    inner = cv2.erode(tile, np.ones((3, 3), np.uint8), iterations=36, borderType=cv2.BORDER_CONSTANT, borderValue=0)
+    edge = cv2.subtract(tile, inner)
+    img[..., :3][edge > 0] = _hex_bgr(EDGE)
+    img[..., 3] = tile
     out = cv2.resize(img, (size, size), interpolation=cv2.INTER_AREA)
     return np.clip(out, 0, 255).astype(np.uint8)
 
@@ -227,8 +331,15 @@ def brand_launcher(launcher: Path, out_root: Path) -> Path:
 
 
 def brand_app(stage: Path) -> int:
-    """Brands the staged app's Python in place; returns how many files changed."""
+    """Brands the staged app's Python in place, and swaps the video window's icons (framegen/assets/icon_<n>.png)
+    for the KVLR icon; returns how many files changed."""
     n = 0
+    assets = stage / "app" / "framegen" / "assets"
+    for size in (16, 24, 32, 48, 64):
+        f = assets / f"icon_{size}.png"
+        if f.exists():
+            cv2.imwrite(str(f), icon_rgba(size))
+            n += 1
     for f in sorted((stage / "app").rglob("*.py")):
         src = f.read_text(encoding="utf-8")
         new = brand_python(src)

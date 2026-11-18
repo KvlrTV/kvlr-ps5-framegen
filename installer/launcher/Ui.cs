@@ -227,6 +227,7 @@ namespace SmoovPlay
             }
             catch (Exception) { }
             Window.TaskbarItemInfo = new TaskbarItemInfo();
+            if (!setupMode) KvlrTaskbar.Start(Window, paths);  // KVLR: one taskbar button for every window (KvlrTaskbar.cs)
             var root = E<Grid>("Root");
             root.SizeChanged += (s, e) => root.Clip = new RectangleGeometry(new Rect(0, 0, root.ActualWidth, root.ActualHeight), 16, 16);
             Window.MouseLeftButtonDown += (s, e) => { try { if (e.ButtonState == MouseButtonState.Pressed) Window.DragMove(); } catch (Exception) { } };
@@ -1647,6 +1648,7 @@ namespace SmoovPlay
             Chip(chips, "\uE7B3", scaler == "vsr" ? "NVIDIA RTX VSR" : scaler == "bilinear" ? "Bilinear" : "AMD FSR 1");
             Chip(chips, "\uE950", vfg ? "NVIDIA VFG" : engine == "trt" ? "TensorRT" : engine == "torch" ? "PyTorch" : "Engine: auto");
             chips.ToolTip = "Change these on the Settings page, or press M in the video window.";
+            KvlrPs5Chip(chips);  // KVLR: the PS5 one-click connect uses, with its state (KvlrUi.cs)
         }
 
         void Chip(Panel host, string glyph, string text)
@@ -1711,6 +1713,7 @@ namespace SmoovPlay
             {
                 if (session != s) return;
                 SetPlayState(st, d);
+                KvlrOnState(st);  // KVLR: end Remote Play on stop, the Rest PS5 button (KvlrUi.cs)
                 if (st == PlayState.Stopped || st == PlayState.Ended || st == PlayState.Error) AfterSession();
                 if (source.Kind == "window") BuildWindowKeys();  // what was got while playing; then this PC's again
             });
@@ -1769,7 +1772,8 @@ namespace SmoovPlay
                     break;
                 default:
                     title = "Ready when you are";
-                    sub = source.RemotePlay ? "Press Play. chiaki-ng opens: connect to your PS5 there, and the smooth video appears in its own window."
+                    sub = KvlrPlaySub() != null ? KvlrPlaySub()  // KVLR: one-click connect (KvlrUi.cs)
+                        : source.RemotePlay ? "Press Play. chiaki-ng opens: connect to your PS5 there, and the smooth video appears in its own window."
                         : source.Kind == "capture" ? "Press Play. The smooth video from your capture card appears in its own window."
                         : source.Kind == "window" ? "Press Play. The smooth picture appears over the app's window, which keeps the keyboard and the controller. SmoovPlay's own keys are below."
                         : source.Kind == "tap" ? "Press Play, then start the app. Its smooth video appears in its own window."
@@ -1915,6 +1919,7 @@ namespace SmoovPlay
             if (Chiaki.Ours(paths) != null) { Toast("chiaki-ng is already open", false); return; }
             var others = Chiaki.Others(paths);
             if (others.Length > 0) { Toast("chiaki-ng is already open", false); return; }
+            KvlrChiaki.ForSetup();  // KVLR: the console list, not an auto-connect (KvlrChiaki.cs)
             if (Chiaki.Start(paths, l => playLog.Add(l))) Toast("Opening chiaki-ng...", false);
             else Toast("chiaki-ng wasn't found in the install folder. Repair SmoovPlay from Help.", true);
         }

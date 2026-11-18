@@ -599,6 +599,8 @@ class GLWindowSink:
         self.timer = GpuTimer(GL)  # GPU time of the scale/draw step, reported on close
         from .kvlr_obs import ObsFeed  # KVLR: OBS output (framegen/kvlr_obs.py)
         self.kvlr_obs = ObsFeed(GL, sharpness)
+        from .kvlr_keys import HoldToStop  # KVLR: Esc held 5 s, then confirmed (framegen/kvlr_keys.py)
+        self.kvlr_hold = HoldToStop()
 
         # Looks: which one is on (the settings, or the launcher's Looks page while it edits one) and its drawing.
         from .looks import LookState
@@ -953,6 +955,8 @@ class GLWindowSink:
                 self._on_key(self.win, getattr(self.glfw, "KEY_" + key), 0, self.glfw.PRESS, 0)
                 self.hotkeys.set_nav(self.menu.open)
         self.glfw.poll_events()
+        if getattr(self, "kvlr_hold", None) is not None:
+            self.kvlr_hold.tick(self)  # KVLR: the Esc hold's countdown and confirmation (framegen/kvlr_keys.py)
 
     def _hint_on_hover(self, r) -> None:
         """Window capture: the overlay gets no mouse events (clicks go to the app), so the pointer is looked at here
@@ -1043,6 +1047,9 @@ class GLWindowSink:
 
     def _on_key(self, win, key, scancode, action, mods) -> None:
         glfw, st = self.glfw, self.settings
+        hold = getattr(self, "kvlr_hold", None)
+        if hold is not None and hold.on_key(self, key, action):  # KVLR: Esc/Q held 5 s, then confirmed (framegen/kvlr_keys.py)
+            return
         nav = {getattr(glfw, "KEY_" + k): v for k, v in self._NAV.items()}
         if action == glfw.REPEAT and not (self.menu.open and key in nav):
             return
