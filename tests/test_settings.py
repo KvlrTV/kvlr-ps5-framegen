@@ -90,7 +90,7 @@ def test_step_wraps_and_skips_disallowed():
     assert st.step("hz", 1) == 90
     assert st.step("hz", 1) == 120
     assert st.step("hz", 1) == 60  # wraps
-    no_vsr = lambda k, v: v != "vsr"  # noqa: E731
+    no_vsr = lambda k, v: v not in ("vsr", "dlss")  # noqa: E731  (KVLR: dlss, DLSS SR, after vsr)
     assert st.step("scaler", 1, no_vsr) == "bilinear"
     assert st.step("scaler", 1, no_vsr) == "fsr"
 
@@ -376,6 +376,8 @@ def test_rows_that_dont_apply_are_hidden_and_the_highlight_stays_put():
     assert st.scaler == "vsr"
     assert "fsr_sharpness" not in keys() and "vsr_quality" in keys()
     menu.key("enter")  # still on the upscaler row, though the rows above and below changed
+    assert st.scaler == "dlss"  # KVLR: NVIDIA DLSS SR comes after RTX VSR
+    menu.key("enter")
     assert st.scaler == "bilinear"
     st.set("model", "vfg")
     assert "vfg_quality" in keys() and not {"engine", "motion"} & set(keys())

@@ -21,21 +21,35 @@ import torch
 from .kvlr_dlss import _D2D, DlssSr, _Ngx
 
 COUNT = {60: 1, 90: 2, 120: 3}  # generated frames per real pair, by output rate (a 30 fps game)
+# "dlssg_motion" -> (pixels per optical-flow vector, NVIDIA Optical Flow level: 5 slow/best, 10, 20 fast, mode)
+MOTION = {"fine": (1, 5, "flow"), "balanced": (2, 10, "flow"), "fast": (4, 20, "flow"),
+          "smoothed": (4, 5, "median"), "none": (4, 20, "zero")}
 FLOW_ID = 1  # this one's optical flow instance in kvlr_ngx.dll (DLSS SR's is 0)
 
 
 class DlssFgInterpolator:
     """DLSS Frame Generation behind RifeInterpolator's / VfgInterpolator's interface (HxWx3 BGR uint8 frames)."""
 
-    def __init__(self, width: int, height: int, settings=None, device: str = "cuda") -> None:
+    def __init__(self, width: int, height: int, settings=None, device: str = "cuda", grid: int | None = None,
+                 perf: int | None = None, motion: str | None = None, lite: bool | None = None,
+                 depth: bool | None = None) -> None:
+        """grid: pixels per optical-flow vector (1, 2 or 4); perf: NVIDIA Optical Flow level (5 slow/best, 10, 20 fast);
+        motion: "flow" (as measured), "median" (3x3 median of the vectors: fewer stray ones at edges), "zero" (none:
+        DLSS-G's own analysis only)."""
+        g, pf, mo = MOTION.get(str(getattr(settings, "dlssg_motion", "balanced")), MOTION["balanced"])
+        grid, perf, motion = grid or g, perf or pf, motion or mo
+        lite = bool(getattr(settings, "dlssg_lite", False)) if lite is None else lite
+        depth = getattr(settings, "dlssg_depth", "off") == "estimated" if depth is None else depth
+        self.grid, self.perf, self.motion, self.lite = grid, perf, motion, lite
         self.w, self.h, self.settings = width, height, settings
         self.device = torch.device(device)
         self.version, self.scale, self.trt = "DLSS FG", 1.0, None
         self.private, self.hdr, self.frame_dtype = False, False, torch.uint8
         self.ngx = n = _Ngx.get()
         p, ull, u = ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(ctypes.c_ulonglong), ctypes.POINTER(ctypes.c_uint)
-        n.kvlr_fg_create.argtypes = [ctypes.c_uint, ctypes.c_uint, p, ull, p, ull, p, ull, u]
-        n.kvlr_fg_eval.argtypes = [ctypes.c_int, ctypes.c_uint, ctypes.c_uint, ctypes.c_int, ctypes.POINTER(ctypes.c_float)]
+        n.kvlr_fg_create2.argtypes = [ctypes.c_uint, ctypes.c_uint, ctypes.c_int, p, ull, p, ull, p, ull, p, ull, u]
+        n.kvlr_fg_eval2.argtypes = [ctypes.c_int, ctypes.c_uint, ctypes.c_uint, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+                                    ctypes.POINTER(ctypes.c_float)]
         n.kvlr_of_create2.argtypes = [ctypes.c_int, ctypes.c_uint, ctypes.c_uint, ctypes.c_uint, ctypes.c_int,
                                       ctypes.c_void_p, ull, ull, u, ull, u, u, u]
         n.kvlr_of_run2.argtypes = [ctypes.c_int, ctypes.c_int]
@@ -53,19 +67,29 @@ class DlssFgInterpolator:
         rt.cudaImportExternalMemory.argtypes = [ctypes.POINTER(pp), ctypes.POINTER(_ExtMemDesc)]
         rt.cudaExternalMemoryGetMappedBuffer.argtypes = [ctypes.POINTER(pp), pp, ctypes.POINTER(_ExtBufDesc)]
         rt.cudaDestroyExternalMemory.argtypes = [pp]
-        ih, mh, oh = ctypes.c_void_p(), ctypes.c_void_p(), ctypes.c_void_p()
-        isz, msz, osz, pitch = ctypes.c_ulonglong(), ctypes.c_ulonglong(), ctypes.c_ulonglong(), ctypes.c_uint()
-        if not n.kvlr_fg_create(width, height, ctypes.byref(ih), ctypes.byref(isz), ctypes.byref(mh), ctypes.byref(msz),
-                                ctypes.byref(oh), ctypes.byref(osz), ctypes.byref(pitch)):
+        ih, mh, oh, dh = ctypes.c_void_p(), ctypes.c_void_p(), ctypes.c_void_p(), ctypes.c_void_p()
+        isz, msz, osz, dsz = ctypes.c_ulonglong(), ctypes.c_ulonglong(), ctypes.c_ulonglong(), ctypes.c_ulonglong()
+        pitch = ctypes.c_uint()
+        if not n.kvlr_fg_create2(width, height, 1 if lite else 0, ctypes.byref(ih), ctypes.byref(isz), ctypes.byref(mh),
+                                 ctypes.byref(msz), ctypes.byref(oh), ctypes.byref(osz), ctypes.byref(dh),
+                                 ctypes.byref(dsz), ctypes.byref(pitch)):
             raise RuntimeError(f"DLSS Frame Generation: {n.kvlr_ngx_error().decode()}")
         self.pitch = pitch.value
         self.buf_in = self._io._import(ih, isz.value)
         self.buf_mv = self._io._import(mh, msz.value)
         self.buf_out = self._io._import(oh, osz.value)
+        self.buf_depth = self._io._import(dh, dsz.value)
+        self.depth = None
+        if depth:
+            try:
+                from .kvlr_depth import DepthEstimator
+                self.depth = DepthEstimator(width, height, self.device)
+            except Exception as e:  # noqa: BLE001 - depth is an extra: carry on without it
+                print(f"[dlssg] estimated depth unavailable ({str(e)[:160]}); going on without it")
         # optical flow (one vector per 4x4 pixels)
         i0, i1, o = ctypes.c_ulonglong(), ctypes.c_ulonglong(), ctypes.c_ulonglong()
         istr, ostr, ow, ohh = ctypes.c_uint(), ctypes.c_uint(), ctypes.c_uint(), ctypes.c_uint()
-        if not n.kvlr_of_create2(FLOW_ID, width, height, 4, 20, ctypes.c_void_p(self.stream.cuda_stream),
+        if not n.kvlr_of_create2(FLOW_ID, width, height, grid, perf, ctypes.c_void_p(self.stream.cuda_stream),
                                  ctypes.byref(i0), ctypes.byref(i1), ctypes.byref(istr), ctypes.byref(o),
                                  ctypes.byref(ostr), ctypes.byref(ow), ctypes.byref(ohh)):
             raise RuntimeError(f"DLSS Frame Generation: optical flow: {n.kvlr_ngx_error().decode()}")
@@ -85,7 +109,9 @@ class DlssFgInterpolator:
         self.hud, self.real, self._steady_frames = None, None, 0
         self.gpu_ms: list[float] = []
         print(f"[dlssg] DLSS Frame Generation {width}x{height} on {n.kvlr_ngx_adapter().decode()} "
-              f"(multi-frame: {'yes' if n.kvlr_ngx_fg_support() > 1 else 'no'})")
+              f"(multi-frame: {'yes' if n.kvlr_ngx_fg_support() > 1 else 'no'}); motion {self.motion} "
+              f"{self.grid}x{self.grid} level {self.perf}, lite blending {'on' if lite else 'off'}, "
+              f"depth {'estimated' if self.depth is not None else 'flat'}")
 
     def _check(self, err: int, what: str) -> None:
         if err:
@@ -110,14 +136,27 @@ class DlssFgInterpolator:
             self._check(self.rt.cudaMemcpy2DAsync(ctypes.c_void_p(self._flow.data_ptr()), self.of_w * 4,
                                                   ctypes.c_void_p(self.of_out), self.of_ostr, self.of_w * 4, self.of_h,
                                                   _D2D, stream), "copy optical flow")
-            mv = self._flow.float().mul_(1.0 / 32.0).repeat_interleave(4, 0).repeat_interleave(4, 1)
+            f = self._flow.float().mul_(1.0 / 32.0)
+            if self.motion == "median":
+                import torch.nn.functional as F
+                x = F.pad(f.permute(2, 0, 1).unsqueeze(0), (1, 1, 1, 1), mode="replicate")
+                f = x.unfold(2, 3, 1).unfold(3, 3, 1).reshape(1, 2, f.shape[0], f.shape[1], 9).median(-1).values[0]
+                f = f.permute(1, 2, 0)
+            g = self.grid
+            mv = f.repeat_interleave(g, 0).repeat_interleave(g, 1) if g > 1 else f
             self._mv.copy_(mv[: self.h, : self.w])
+            if self.motion == "zero":
+                self._mv.zero_()
         else:
             self._mv.zero_()
         self._check(self.rt.cudaMemcpy2DAsync(self.buf_mv, self.pitch, ctypes.c_void_p(self._mv.data_ptr()), self.w * 4,
                                               self.w * 4, self.h, _D2D, stream), "copy motion")
         self._check(self.rt.cudaMemcpy2DAsync(self.buf_in, self.pitch, ctypes.c_void_p(self._rgba.data_ptr()),
                                               self.w * 4, self.w * 4, self.h, _D2D, stream), "copy frame")
+        if self.depth is not None:
+            d = self.depth(self.inp)
+            self._check(self.rt.cudaMemcpy2DAsync(self.buf_depth, self.pitch, ctypes.c_void_p(d.data_ptr()), self.w * 4,
+                                                  self.w * 4, self.h, _D2D, stream), "copy depth")
         self._frames += 1
         self._new = True
         if self.steady > 0:
@@ -138,7 +177,9 @@ class DlssFgInterpolator:
         k = min(n, max(1, round(t * (n + 1))))
         self.stream.synchronize()  # DLSS-G reads the shared buffers on its own queue
         ms = ctypes.c_float()
-        if not self.ngx.kvlr_fg_eval(1 if self._new else 0, n, k, 1 if self._frames < 2 else 0, ctypes.byref(ms)):
+        if not self.ngx.kvlr_fg_eval2(1 if self._new else 0, n, k, 1 if self._frames < 2 else 0,
+                                      1 if self.depth is not None else 0, 1 if self.motion == "median" else 0,
+                                      ctypes.byref(ms)):
             raise RuntimeError(f"DLSS Frame Generation: {self.ngx.kvlr_ngx_error().decode()}")
         self._new = False
         self.gpu_ms.append(ms.value)

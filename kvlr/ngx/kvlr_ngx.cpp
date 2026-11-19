@@ -512,23 +512,34 @@ struct Fg {
     NVSDK_NGX_Handle* handle = nullptr;
     unsigned w = 0, h = 0;
     ComPtr<ID3D12Resource> back, depth, mv, out;
-    ComPtr<ID3D12Resource> inBuf, mvBuf, outBuf;
-    HANDLE inH = nullptr, mvH = nullptr, outH = nullptr;
-    UINT64 inSize = 0, mvSize = 0, outSize = 0;
+    ComPtr<ID3D12Resource> inBuf, mvBuf, outBuf, depthBuf;
+    HANDLE inH = nullptr, mvH = nullptr, outH = nullptr, depthH = nullptr;
+    UINT64 inSize = 0, mvSize = 0, outSize = 0, depthSize = 0;
     UINT pitch = 0;  // rows of all three buffers (4 bytes a pixel)
 } g_fg;
 
 void release_fg() {
     if (g_fg.handle) { NVSDK_NGX_D3D12_ReleaseFeature(g_fg.handle); g_fg.handle = nullptr; }
-    for (HANDLE hh : {g_fg.inH, g_fg.mvH, g_fg.outH}) if (hh) CloseHandle(hh);
+    for (HANDLE hh : {g_fg.inH, g_fg.mvH, g_fg.outH, g_fg.depthH}) if (hh) CloseHandle(hh);
     g_fg = Fg{};
 }
 }
 
 // Creates DLSS-G for w x h frames with three shared buffers (frame in, motion in, generated frame out), all with
 // `pitch`-byte rows. Returns their NT handles and allocation sizes.
+KVLR_API int kvlr_fg_create2(unsigned w, unsigned h, int lite, void** in_h, unsigned long long* in_size, void** mv_h,
+                             unsigned long long* mv_size, void** out_h, unsigned long long* out_size, void** depth_h,
+                             unsigned long long* depth_size, unsigned* pitch);
 KVLR_API int kvlr_fg_create(unsigned w, unsigned h, void** in_h, unsigned long long* in_size, void** mv_h,
                             unsigned long long* mv_size, void** out_h, unsigned long long* out_size, unsigned* pitch) {
+    void* dh = nullptr; unsigned long long ds = 0;
+    return kvlr_fg_create2(w, h, 0, in_h, in_size, mv_h, mv_size, out_h, out_size, &dh, &ds, pitch);
+}
+// lite: DLSS-G's lighter "candidate blending" (set at creation). depth: a shared R32_FLOAT buffer (rows `pitch` bytes
+// apart) for estimated depth, copied in with each new real frame when kvlr_fg_eval2's use_depth is set.
+KVLR_API int kvlr_fg_create2(unsigned w, unsigned h, int lite, void** in_h, unsigned long long* in_size, void** mv_h,
+                             unsigned long long* mv_size, void** out_h, unsigned long long* out_size, void** depth_h,
+                             unsigned long long* depth_size, unsigned* pitch) {
     std::lock_guard<std::recursive_mutex> lk(g_lock);
     if (!g_ngx) return fail("NGX not started");
     int ok = 0;
@@ -548,7 +559,8 @@ KVLR_API int kvlr_fg_create(unsigned w, unsigned h, void** in_h, unsigned long l
     g_fg.inBuf = shared_buffer(sz, &g_fg.inH, &g_fg.inSize);
     g_fg.mvBuf = shared_buffer(sz, &g_fg.mvH, &g_fg.mvSize);
     g_fg.outBuf = shared_buffer(sz, &g_fg.outH, &g_fg.outSize);
-    if (!g_fg.inBuf || !g_fg.mvBuf || !g_fg.outBuf) return fail("couldn't make the frame generation buffers");
+    g_fg.depthBuf = shared_buffer(sz, &g_fg.depthH, &g_fg.depthSize);
+    if (!g_fg.inBuf || !g_fg.mvBuf || !g_fg.outBuf || !g_fg.depthBuf) return fail("couldn't make the frame generation buffers");
 
     // depth: a constant 0 (one far plane), written once through a zeroed upload buffer
     ComPtr<ID3D12Resource> zero = buffer(sz, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_STATE_GENERIC_READ);
@@ -566,6 +578,7 @@ KVLR_API int kvlr_fg_create(unsigned w, unsigned h, void** in_h, unsigned long l
     NVSDK_NGX_DLSSG_Create_Params cp{};
     cp.Width = w; cp.Height = h; cp.NativeBackbufferFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
     cp.RenderWidth = w; cp.RenderHeight = h; cp.DynamicResolutionScaling = false;
+    g_params->Set(NVSDK_NGX_DLSSG_Parameter_LiteCandidateBlendingEnabled, (unsigned)(lite ? 1 : 0));
     NVSDK_NGX_Result r = NGX_D3D12_CREATE_DLSSG(g_list.Get(), 1, 1, &g_fg.handle, g_params, &cp);
     g_list->Close();
     ID3D12CommandList* lists[] = {g_list.Get()};
@@ -574,12 +587,21 @@ KVLR_API int kvlr_fg_create(unsigned w, unsigned h, void** in_h, unsigned long l
     if (NVSDK_NGX_FAILED(r)) return fail("creating DLSS Frame Generation", r);
     *in_h = g_fg.inH; *in_size = g_fg.inSize; *mv_h = g_fg.mvH; *mv_size = g_fg.mvSize;
     *out_h = g_fg.outH; *out_size = g_fg.outSize; *pitch = g_fg.pitch;
+    *depth_h = g_fg.depthH; *depth_size = g_fg.depthSize;
     return 1;
 }
 
 // Frame `index` (1..count) between the previous real frame and this one. new_real: the shared frame and motion
 // buffers hold a new real frame (copied in before the first index). reset: no previous frame to go from.
+KVLR_API int kvlr_fg_eval2(int new_real, unsigned count, unsigned index, int reset, int use_depth, int mv_dilated,
+                           float* gpu_ms);
 KVLR_API int kvlr_fg_eval(int new_real, unsigned count, unsigned index, int reset, float* gpu_ms) {
+    return kvlr_fg_eval2(new_real, count, index, reset, 0, 0, gpu_ms);
+}
+// use_depth: the shared depth buffer holds this frame's estimated depth (1 near, 0 far: DLSS-G's "inverted" depth).
+// mv_dilated: tell DLSS-G the motion vectors are already spread over object edges.
+KVLR_API int kvlr_fg_eval2(int new_real, unsigned count, unsigned index, int reset, int use_depth, int mv_dilated,
+                           float* gpu_ms) {
     std::lock_guard<std::recursive_mutex> lk(g_lock);
     if (!g_fg.handle) return fail("DLSS Frame Generation not created");
     g_alloc->Reset(); g_list->Reset(g_alloc.Get(), nullptr);
@@ -593,6 +615,15 @@ KVLR_API int kvlr_fg_eval(int new_real, unsigned count, unsigned index, int rese
             src.PlacedFootprint.Footprint = {pr.second.second, g_fg.w, g_fg.h, 1, g_fg.pitch};
             g_list->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
             barrier(pr.first, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        }
+        if (use_depth) {
+            barrier(g_fg.depth.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_DEST);
+            D3D12_TEXTURE_COPY_LOCATION dst{g_fg.depth.Get(), D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX}; dst.SubresourceIndex = 0;
+            D3D12_TEXTURE_COPY_LOCATION src{g_fg.depthBuf.Get(), D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT};
+            src.PlacedFootprint.Offset = 0;
+            src.PlacedFootprint.Footprint = {DXGI_FORMAT_R32_FLOAT, g_fg.w, g_fg.h, 1, g_fg.pitch};
+            g_list->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
+            barrier(g_fg.depth.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
         }
     }
     NVSDK_NGX_D3D12_DLSSG_Eval_Params ep{};
@@ -610,6 +641,8 @@ KVLR_API int kvlr_fg_eval(int new_real, unsigned count, unsigned index, int rese
     op.cameraNear = 0.1f; op.cameraFar = 1000.0f; op.cameraFOV = 1.0f;
     op.cameraAspectRatio = (float)g_fg.w / g_fg.h;
     op.cameraMotionIncluded = true;
+    op.depthInverted = use_depth != 0;  // estimated depth: 1 near, 0 far (the constant default depth is 0 either way)
+    op.motionVectorsDilated = mv_dilated != 0;
     op.reset = reset != 0;
     g_list->EndQuery(g_queries.Get(), D3D12_QUERY_TYPE_TIMESTAMP, 0);
     NVSDK_NGX_Result r = NGX_D3D12_EVALUATE_DLSSG(g_list.Get(), g_fg.handle, g_params, &ep, &op);

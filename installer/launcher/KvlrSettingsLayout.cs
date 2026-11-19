@@ -21,7 +21,7 @@ namespace SmoovPlay
             { "Picture", "Quality" }, { "Capture card", "Quality" },
             { "Smoothness", "Frame Gen" },
             { "Looks", "Colour" },
-            { "PS5 Remote Play", "Stream" }, { "PS5 connection", "Stream" }, { "Instant replay", "Stream" },
+            { "PS5 Remote Play", "Stream" }, { "PS5 connection", "Stream" }, { "Instant replay", "Stream" }, { "Sound", "Stream" },
             { "Display", "Display" }, { "OBS output", "Display" },
         };
         static readonly Dictionary<string, string> KvlrMaster = new Dictionary<string, string>
@@ -151,6 +151,7 @@ namespace SmoovPlay
         /// <summary>The strip and the card switches, from the current values (the session's while playing).</summary>
         void KvlrRefresh()
         {
+            if (!kvlrSoundShown && settingSpecs != null) BuildChips();  // the Play page's Sound out, once the list is in
             if (kvlrStrip == null) return;
             KvlrApplyTab();
             bool was = syncingSettings;
@@ -163,7 +164,7 @@ namespace SmoovPlay
 
             string scaler = SettingText("scaler") ?? "fsr", hz = SettingText("hz") ?? "60";
             bool interp = SettingText("interp") != "false";
-            string up = scaler == "vsr" ? (SettingText("ai_upscaler") == "dlss" ? "DLSS SR" : "RTX VSR")
+            string up = scaler == "dlss" ? "DLSS SR" : scaler == "vsr" ? "RTX VSR"
                       : scaler == "bilinear" ? "Bilinear" : "FSR 1";
             string model = SettingText("model");
             string fg = (model == "dlssg" ? "NVIDIA DLSS FG" : model == "vfg" ? "NVIDIA VFG" : "RIFE")

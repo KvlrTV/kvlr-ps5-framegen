@@ -1652,6 +1652,7 @@ namespace SmoovPlay
                                  : vfg ? "NVIDIA VFG" : engine == "trt" ? "TensorRT" : engine == "torch" ? "PyTorch" : "Engine: auto");
             chips.ToolTip = "Change these on the Settings page, or press M in the video window.";
             KvlrPs5Chip(chips);  // KVLR: the PS5 one-click connect uses, with its state (KvlrUi.cs)
+            KvlrSoundOut(chips);  // KVLR: where the game's sound plays (KvlrCaptureRow.cs)
         }
 
         void Chip(Panel host, string glyph, string text)

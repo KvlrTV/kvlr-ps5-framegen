@@ -498,7 +498,7 @@ class GLWindowSink:
     the launcher's Settings page, since the keys go to the app.
     """
 
-    NAMES = {"fsr": "FSR 1", "vsr": "RTX VSR", "bilinear": "bilinear"}
+    NAMES = {"fsr": "FSR 1", "vsr": "RTX VSR", "dlss": "DLSS SR", "bilinear": "bilinear"}  # KVLR: dlss
 
     # Shown when the window opens, and again when the mouse moves over it.
     KEYS_HINT = "M: menu    F: fullscreen    Esc: quit"
@@ -601,10 +601,17 @@ class GLWindowSink:
             if why is not None and scaler == "vsr":
                 print(f"[display] RTX VSR unavailable ({why})")
         self.modes = [m for m, ok in (("fsr", self.fsr), ("vsr", self._vsr_args), ("bilinear", True)) if ok]
+        if "vsr" in self.modes:  # KVLR: NVIDIA DLSS SR, drawn through the RTX VSR path (framegen/kvlr_dlss.py)
+            from .kvlr_dlss import dlss_reason
+            if dlss_reason() is None:
+                self.modes.insert(self.modes.index("vsr") + 1, "dlss")
         self.mode = scaler if scaler in self.modes else self.modes[0]
+        if self.mode == "dlss":  # KVLR
+            self.mode = "vsr"
         if self.mode == "vsr" and not self._vsr_ready():
             self.mode = self.modes[0]
-        details = {"fsr": f" (sharpness {sharpness:g})", "vsr": f" (quality {vsr_quality})", "bilinear": ""}
+        details = {"fsr": f" (sharpness {sharpness:g})", "vsr": f" (quality {vsr_quality})", "bilinear": "",
+                   "dlss": ""}  # KVLR
         print(f"[display] upscaling with {self._name(self.mode)}{details[self.mode]}; u cycles "
               + " / ".join(self._name(m) for m in self.modes) + "; m opens the settings menu")
         self.timer = GpuTimer(GL)  # GPU time of the scale/draw step, reported on close
@@ -751,6 +758,8 @@ class GLWindowSink:
             self.toast(self.KEYS_HINT, 3.0 if self.hotkeys is None else 6.0)
 
     def _name(self, mode: str) -> str:
+        if mode == "dlss":  # KVLR
+            return "DLSS SR"
         if mode == "vsr" and getattr(self.vsr, "label", None):  # KVLR: "DLSS SR" when that engine is chosen
             return self.vsr.label
         if mode == "vsr":
@@ -764,7 +773,7 @@ class GLWindowSink:
             return True
         if self._vsr_args is None:
             return False
-        from .kvlr_dlss import make_upscaler  # KVLR: RTX VSR or DLSS SR by "ai_upscaler" (framegen/kvlr_dlss.py)
+        from .kvlr_dlss import make_upscaler  # KVLR: RTX VSR or DLSS SR by the Upscaler choice (framegen/kvlr_dlss.py)
         w, h, clean = self._vsr_args
         try:
             self.vsr = make_upscaler(self.settings, w, h, self.settings.vsr_quality, clean=clean)
@@ -914,8 +923,8 @@ class GLWindowSink:
         """A setting changed (menu, hotkey or elsewhere): apply the ones the window owns."""
         st, glfw = self.settings, self.glfw
         if key == "scaler" and st.scaler in self.modes:
-            if st.scaler != "vsr" or self._vsr_ready():
-                self.mode = st.scaler
+            if st.scaler not in ("vsr", "dlss") or self._vsr_ready():  # KVLR: dlss draws as vsr
+                self.mode = "vsr" if st.scaler == "dlss" else st.scaler
             else:
                 self.toast(f"RTX VSR couldn't start: {self.vsr_why}", 5.0)
         elif key == "fsr_sharpness" and self.fsr is not None:
@@ -1320,13 +1329,16 @@ class GLWindowSink:
             self.panorama.draw(screen, fw, fh, panorama_t(fw, fh, self.w, self.h))
             label += " + panorama"
         self.timer.end(q, f"{label} {dw}x{dh}")
-        if self.kvlr_obs is not None:  # KVLR: clean feed for OBS, before any menu or stats (framegen/kvlr_obs.py)
-            self.kvlr_obs.frame(self, target, x0, y0, dw, dh)
+        obs_stats = getattr(self.settings, "obs_stats", False)  # KVLR: the stats bar on the OBS feed too
+        if self.kvlr_obs is not None and not obs_stats:  # KVLR: clean feed for OBS, before any menu or stats
+            self.kvlr_obs.frame(self, target, x0, y0, dw, dh)  # (framegen/kvlr_obs.py)
         if self.overlay and isinstance(text, MiniText):
             self._draw_stats(text, ux, uy, uw, uh)
         elif self.overlay and text:
             first, nl, rest = text.partition("\n")  # the upscaler goes on the first line; a second is the test line
             self._draw_stats(f"{first}  {label}{nl}{rest}", ux, uy, uw, uh)
+        if self.kvlr_obs is not None and obs_stats:  # KVLR: after the stats, still before any menu or message
+            self.kvlr_obs.frame(self, target, x0, y0, dw, dh)
         self._draw_ui(ux, uy, uw, uh)
         self._present()
         self.settle()

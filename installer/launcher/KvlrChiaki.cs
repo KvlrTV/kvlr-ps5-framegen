@@ -77,6 +77,12 @@ namespace SmoovPlay
 
                         // What closing chiaki-ng's window does to the session (never "ask": a dialog mid-stop)
                         st.SetValue("disconnect_action", Get(s, "ps5_on_stop", "end") == "rest" ? "sleep" : "nothing");
+                        string outDev = Get(s, "audio_out", "");  // KVLR: Sound out (framegen/kvlr_audio.py)
+                        if (outDev != "" && outDev != "default")
+                        {
+                            st.SetValue("audio_out_device", outDev);
+                            log("[kvlr] sound out " + outDev);
+                        }
 
                         string codec = Get(s, "ps5_codec", "auto");
                         if (codec != "keep")

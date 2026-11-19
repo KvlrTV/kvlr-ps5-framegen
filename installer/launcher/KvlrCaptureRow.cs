@@ -45,6 +45,25 @@ namespace SmoovPlay
 
         static KeyValuePair<string, string> Kv(string k, string v) { return new KeyValuePair<string, string>(k, v); }
 
+        /// <summary>Sound out ("audio_out") under the Play page's chips, for every source: the capture card's sound
+        /// and chiaki-ng's (Remote Play). Applies from the next Play.</summary>
+        bool kvlrSoundShown;
+
+        void KvlrSoundOut(WrapPanel chips)
+        {
+            var spec = settingSpecs != null ? settingSpecs.FirstOrDefault(s => s.Key == "audio_out") : null;
+            kvlrSoundShown = spec != null;
+            if (spec == null) { LoadSettingSpecs(); return; }  // drawn once the list arrives (KvlrRefresh)
+            string now = SettingText("audio_out") ?? Json.Serialize(spec.Default).Trim('"');
+            var drop = KvlrDrop("kvlr-audio-out", "Sound out",
+                                spec.Choices.Select(c => Kv((string)c.Key, c.Value)), now,
+                                v => KvlrSet("audio_out", v, nextPlay: true), minWidth: 230);
+            drop.MaxWidth = 340;
+            var lab = Labelled("Sound out", drop);
+            ((FrameworkElement)lab).Margin = new Thickness(4, 4, 4, 4);
+            chips.Children.Add(lab);
+        }
+
         void KvlrSet(string key, object value, bool nextPlay = false)
         {
             var spec = settingSpecs != null ? settingSpecs.FirstOrDefault(s => s.Key == key) : null;

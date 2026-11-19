@@ -161,6 +161,8 @@ def open_capture(a, w: int, h: int, test):
     colour = {"auto": "auto", "709-limited": (True, False), "709-full": (True, True), "601-limited": (False, False),
               "601-full": (False, True)}[a.capture_colour]
     sound = None if a.capture_audio == "off" else sound_player()
+    from framegen.kvlr_audio import player as kvlr_player  # KVLR: the Sound out pick (framegen/kvlr_audio.py)
+    sound = kvlr_player(sound, a.settings)
     if Path(a.capture).is_file():  # a recording standing in for a card: decoded, sent through the raw NV12 path
         return capture.CardSource.video_file(a.capture, test=test, colour=colour, audio=sound)
     name = a.capture
@@ -316,7 +318,7 @@ def main() -> int:
                          "delay in a window, G-Sync in a window). Default: the saved setting")
     ap.add_argument("--steady-hud", action=argparse.BooleanOptionalAction, default=None,
                     help="keep unchanged parts of the picture (HUD, map) as the game drew them. Default: the saved setting")
-    ap.add_argument("--scaler", default=None, choices=["fsr", "vsr", "bilinear"],
+    ap.add_argument("--scaler", default=None, choices=["fsr", "vsr", "dlss", "bilinear"],  # KVLR: dlss
                     help="how the window upscales when it is bigger than the frame (cycle live with 'u'); "
                          "vsr = NVIDIA RTX Video Super Resolution, needs the RTX Video SDK (framegen/rtxvsr.py)")
     ap.add_argument("--vsr-quality", type=int, default=None, choices=[1, 2, 3, 4],
@@ -476,7 +478,8 @@ def main() -> int:
         if (test_model or settings.model) == "vfg" and not dml_mode:
             return {"model": "vfg", "vfg_quality": settings.vfg_quality}
         if (test_model or settings.model) == "dlssg" and not dml_mode:  # KVLR: DLSS FG (framegen/kvlr_dlssg.py)
-            return {"model": "dlssg"}
+            return {"model": "dlssg", "dlssg_motion": settings.dlssg_motion, "dlssg_depth": settings.dlssg_depth,
+                    "dlssg_lite": settings.dlssg_lite}
         if a.scale is not None:
             scale = a.scale
         else:  # Auto. On an RTX 4070 Ti SUPER (scripts/benchmark.py), per 30 fps game frame (33 ms): 120 Hz at 1080p

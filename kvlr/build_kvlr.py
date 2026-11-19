@@ -73,6 +73,16 @@ def stage_ngx(stage: Path) -> None:
     for name in ("kvlr_ngx.dll", "nvngx_dlss.dll", "nvngx_dlssg.dll"):
         shutil.copy2(built / name, dest / name)
     shutil.copy2(sdk / "LICENSE.txt", dest / "NVIDIA-RTX-SDKs-LICENSE.txt")
+    # Depth Anything V2 Small (Apache-2.0) for DLSS FG's estimated depth (framegen/kvlr_depth.py)
+    depth = sdk.parent / "depth" / "depth_anything_v2_small_fp16.onnx"
+    if depth.exists():
+        shutil.copy2(depth, stage / "app" / "models" / depth.name)
+        lic = depth.with_name("LICENSE-depth-anything-v2-small.txt")
+        if lic.exists():
+            shutil.copy2(lic, stage / "app" / "models" / lic.name)
+        print(f"[kvlr] depth model staged ({depth.stat().st_size // 1_000_000} MB)")
+    else:
+        print(f"[kvlr] depth model not found ({depth}): DLSS FG depth will be unavailable")
     print(f"[kvlr] DLSS staged in {dest}")
 
 

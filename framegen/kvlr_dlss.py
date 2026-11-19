@@ -1,8 +1,8 @@
-"""KVLR edition: NVIDIA DLSS Super Resolution as the AI upscaler (setting "ai_upscaler"), next to RTX VSR.
+"""KVLR edition: NVIDIA DLSS Super Resolution as an Upscaler choice ("scaler": "dlss"), next to RTX VSR.
 
 The window's "RTX VSR" scaler slot (framegen/io.py) gets a KvlrUpscaler, which has RTX VSR's interface and picks the
-engine on every frame from the setting, so the choice switches live: "vsr" uses upstream's RTX VSR (framegen/rtxvsr.py
-make_vsr); "dlss" runs DLSS SR in kvlr_ngx.dll (kvlr/ngx/kvlr_ngx.cpp, Direct3D 12 + NVIDIA's NGX). Both write NVIDIA's
+engine on every frame from the Upscaler setting, so the choice switches live: RTX VSR uses upstream's framegen/rtxvsr.py
+make_vsr; DLSS SR (the window draws "dlss" as its "vsr" mode) runs DLSS SR in kvlr_ngx.dll (kvlr/ngx/kvlr_ngx.cpp, Direct3D 12 + NVIDIA's NGX). Both write NVIDIA's
 packed 10-bit RGB into the window's texture, so the window code is unchanged.
 
 DLSS SR's frames go through buffers shared between Direct3D 12 and CUDA (no copies through the CPU); the helper waits
@@ -226,7 +226,7 @@ class DlssSr:
 
 
 class KvlrUpscaler:
-    """The window's AI upscaler: RTX VSR or DLSS SR by the "ai_upscaler" setting, switched live. RTX VSR's interface."""
+    """The window's AI upscaler: RTX VSR or DLSS SR by the Upscaler setting, switched live. RTX VSR's interface."""
     out_format = "rgb10a2"
 
     def __init__(self, settings, src_w: int, src_h: int, quality: int, clean: bool = False) -> None:
@@ -238,8 +238,7 @@ class KvlrUpscaler:
 
     @property
     def name(self) -> str:
-        e = getattr(self.settings, "ai_upscaler", "vsr")
-        return e if e in ENGINES else "vsr"
+        return "dlss" if getattr(self.settings, "scaler", "") == "dlss" else "vsr"
 
     def _engine(self):
         name = self.name

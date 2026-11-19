@@ -170,12 +170,16 @@ SPECS: tuple[Spec, ...] = (
               "1440p capture at 90, a quarter for a 4K capture, and Full otherwise. Only used with RIFE.",
          impact={"picture": "Half is a little softer on small, fast details.",
                  "speed": "Half takes about 40% less time per AI frame."}),
-    Spec("scaler", "Upscaler", ("fsr", "vsr", "bilinear"), "fsr",
-         {"fsr": "AMD FSR 1", "vsr": "NVIDIA RTX VSR", "bilinear": "Bilinear"}, group="Picture", quick=True,
+    # KVLR: "dlss", NVIDIA DLSS Super Resolution (framegen/kvlr_dlss.py), drawn through the RTX VSR path
+    Spec("scaler", "Upscaler", ("fsr", "vsr", "dlss", "bilinear"), "fsr",
+         {"fsr": "AMD FSR 1", "vsr": "NVIDIA RTX VSR", "dlss": "NVIDIA DLSS SR", "bilinear": "Bilinear"},
+         group="Picture", quick=True,
          later="Support for other upscalers may come in a later version.",
          hints={"fsr": "Sharp and almost free: about 0.1\u00a0ms a frame. Recommended.",
                 "vsr": "NVIDIA's AI upscaler, Experimental. It comes with NVIDIA VFG's download (RTX 40 and 50 "
                        "series); without it, FSR\u00a01 is used. Heavier.",
+                "dlss": "NVIDIA DLSS Super Resolution with optical-flow motion: sharp detail built over frames. "
+                        "RTX cards. About 2.5\u00a0ms at 4K.",
                 "bilinear": "Plain resizing, the softest. For comparison."},
          help="Enlarges the picture from the game (usually 1080p) to fill your window or screen, so it only "
               "matters when that's bigger than 1080p, like a 1440p or 4K display. Key: U.",

@@ -9,7 +9,7 @@ OBS_SIZES = {"2160": (3840, 2160), "1440": (2560, 1440), "1080": (1920, 1080)}
 OBS_SENDER = "KVLR PS5"  # the name OBS's Spout2 Capture source lists
 # Set once and changed on the launcher's Settings page (live, while playing too), so they stay out of the in-video
 # menu, which has to fit a 1080p picture with room for upstream's next settings (tests/test_settings.py).
-MENU_HIDDEN_GROUPS = {"OBS output", "PS5 connection", "Capture card"}
+MENU_HIDDEN_GROUPS = {"OBS output", "PS5 connection", "Capture card", "Sound"}
 
 # chiaki-ng's saved settings (Qt QSettings in the registry). The launcher (installer/launcher/KvlrChiaki.cs) writes the
 # "PS5 connection" choices there just before Play starts chiaki-ng.
@@ -38,7 +38,15 @@ def chiaki_consoles() -> tuple:
 
 def kvlr_specs(Spec, on_off: dict) -> tuple:
     consoles = chiaki_consoles()
+    from .kvlr_audio import default_choice, outputs
+    outs = outputs()
     return (
+        Spec("audio_out", "Sound out", ("default",) + outs, default_choice(outs),
+             {"default": "Windows default output"} | {n: n for n in outs}, live=False, group="Sound",
+             help="Where the game's sound plays: a capture card's sound, which KVLR PS5 Frame Gen plays, and PS5 "
+                  "Remote Play's, which chiaki-ng plays (set for it before Play). The default is your BEACN Mix "
+                  "Create's Game channel when it's there. Applies from the next Play.",
+             hints={"default": "Whatever Windows uses for sound"}),
         Spec("ps5_console", "Connect to", ("ask",) + consoles, "ask",
              {"ask": "Ask each time"} | {c: c for c in consoles}, group="PS5 connection",
              help="Play connects to this PS5 by itself: chiaki-ng finds it, wakes it from rest mode if it needs to, "
@@ -76,28 +84,48 @@ def kvlr_specs(Spec, on_off: dict) -> tuple:
                     "1440": "Between the two", "1080": "Lightest: best for 90/120"},
              impact={"speed": "RIFE at 4K takes about 15 ms per AI frame on an RTX 5070 Ti, too slow for 90 "
                               "or 120 fps."}),
-        Spec("ai_upscaler", "AI upscaler", ("vsr", "dlss"), "vsr", {"vsr": "NVIDIA RTX VSR", "dlss": "NVIDIA DLSS SR"},
-             group="Picture", applies=("scaler", ("vsr",)),
-             help="The engine behind the AI upscaler (Upscaler: RTX VSR). RTX VSR is made for video. DLSS SR is the "
-                  "game upscaler: sharper detail that builds up over a few frames; on captured video it has no motion "
-                  "data yet, so fast motion can smear a little. Switches at once while playing.",
-             hints={"vsr": "Made for video: steady, clean", "dlss": "Game upscaler: sharper, builds detail over frames"}),
         Spec("dlss_preset", "DLSS model", ("auto", "k", "l", "m"), "auto",
              {"auto": "Auto", "k": "K (quality)", "l": "L (low input sizes)", "m": "M (DLSS 4.5)"}, live=False,
-             group="Picture", applies=("ai_upscaler", ("dlss",)),
+             group="Picture", applies=("scaler", ("dlss",)),
              help="Which DLSS model upscales. Auto lets the driver pick for the size. Applies from the next Play."),
         Spec("dlss_motion", "DLSS motion", ("flow", "zero"), "flow", {"flow": "Optical flow", "zero": "None (still)"},
-             live=False, group="Picture", applies=("ai_upscaler", ("dlss",)),
+             live=False, group="Picture", applies=("scaler", ("dlss",)),
              help="How DLSS learns what moved between frames. Optical flow measures it with the graphics card's "
                   "flow hardware, so moving things stay sharp; None treats the picture as still, which can smear "
                   "fast motion. Applies from the next Play.",
              hints={"flow": "Moving things stay sharp", "zero": "Lightest; fast motion can smear"}),
+        Spec("dlssg_motion", "DLSS FG motion", ("fine", "balanced", "fast", "smoothed", "none"), "balanced",
+             {"fine": "Fine", "balanced": "Balanced", "fast": "Fast", "smoothed": "Smoothed", "none": "None"},
+             live=False, group="Smoothness", applies=("model", ("dlssg",)),
+             help="How DLSS FG is told what moved: optical flow measured by your graphics card. Fine measures every "
+                  "pixel at the best quality (cleanest edges, a little more work); Fast uses 4x4 blocks (blocky edges "
+                  "can tear); Smoothed cleans stray vectors up; None leaves it to DLSS FG's own analysis.",
+             hints={"fine": "Every pixel, best quality: cleanest edges", "balanced": "2x2 blocks, medium quality",
+                    "fast": "4x4 blocks, fast: edges can tear", "smoothed": "4x4, best quality, stray vectors removed",
+                    "none": "DLSS FG's own analysis only"}),
+        Spec("dlssg_depth", "DLSS FG depth", ("off", "estimated"), "off", {"off": "Off", "estimated": "Estimated"},
+             live=False, group="Smoothness", applies=("model", ("dlssg",)),
+             help="Estimated depth tells DLSS FG what's in front (your character) and what's behind, so a background "
+                  "sliding past doesn't drag the outline with it. An AI model (Depth Anything V2 Small) reads it from "
+                  "each real frame: about 4.5 ms per real frame. The first use builds it (about a minute).",
+             hints={"off": "Flat: everything at one distance", "estimated": "Depth Anything V2: cleaner outlines"}),
+        Spec("dlssg_lite", "DLSS FG lite blending", (False, True), False, on_off,
+             live=False, group="Smoothness", applies=("model", ("dlssg",)),
+             help="DLSS FG's lighter way of blending its candidate frames. It may soften tearing at edges, at some "
+                  "cost to sharpness. Applies after a restart.",
+             hints={False: "DLSS FG's normal blending", True: "Lighter blending: softer edges"}),
         Spec("obs_output", "OBS output", (False, True), False, on_off, group="OBS output",
              help="Sends a clean copy of the picture to OBS through Spout: no menu, stats or notes on it. In OBS, "
                   f"add a Spout2 Capture source and pick \"{OBS_SENDER}\" (needs the Spout2 plugin for OBS). "
                   "Off with HDR output.",
              impact={"picture": "None on SmoovPlay's own window.",
                      "speed": "About 0.1 to 0.3 ms a frame of graphics card time, only while it's on."}),
+        Spec("obs_stats", "Stats on stream", (False, True), False, on_off, group="OBS output",
+             applies=("obs_output", (True,)),
+             help="Puts the stats bar (frame rate, game rate, delay) on the OBS feed too, as on your screen, never "
+                  "the menu or messages. Needs the stats overlay on (S) and the OBS size the same as the screen's "
+                  "(fullscreen on a 4K monitor, 4K feed); otherwise OBS gets the picture only.",
+             hints={False: "A clean picture", True: "With the stats bar, as on screen"}),
         Spec("obs_size", "OBS output size", ("2160", "1440", "1080"), "2160",
              {"2160": "4K (3840x2160)", "1440": "1440p", "1080": "1080p"}, group="OBS output",
              applies=("obs_output", (True,)),
