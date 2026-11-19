@@ -30,7 +30,7 @@ The upstream `README.md`, `LICENSE` and `NOTICE` stay as they are.
 
 | Feature | Files | Upstream hooks (marked `KVLR:`) |
 |---|---|---|
-| Settings registry additions | `framegen/kvlr_settings.py` | `framegen/settings.py` (appends to `SPECS`), `framegen/menu.py` (launcher-only groups stay out of the in-video menu), one assertion in `tests/test_settings.py` |
+| Settings registry additions | `framegen/kvlr_settings.py` | `framegen/settings.py` (appends to `SPECS`), `framegen/menu.py` (launcher-only groups stay out of the in-video menu), two assertions in `tests/test_settings.py` |
 | OBS output: a clean picture (no menu, stats or notes) sent to OBS through Spout, 4K/1440p/1080p at 60 or 30 fps | `framegen/kvlr_obs.py` | `framegen/io.py` (made in `GLWindowSink.__init__`, called in `write()` before the UI is drawn, closed in `close()`); `SpoutGL==0.1.1` in `installer/requirements-runtime.txt` |
 
 **Branding** (`kvlr/branding.py`, `kvlr/brand/kvlr-mark.png`) touches no upstream file. At build time it brands
@@ -65,13 +65,13 @@ Esc. When Stop ends Remote Play, `run.py` no longer restores chiaki-ng's window 
 jumps to another monitor before the launcher closes it. The on-screen wording ("Esc: quit" and the like) is swapped
 by the branding layer's `TEXT_SWAPS`.
 
-**4K capture cards** (`framegen/kvlr_capture.py`, settings `capture_size` and `capture_work`, launcher-only group
-"Capture card"; hooks in `run.py` where the capture source opens and after the settings load). The card is asked for
-up to 3840x2160 (upstream always asks 1920x1080), and frame generation works at the "work size": Auto is 1080p for 90
-and 120 fps, and at 60 fps the captured size with NVIDIA VFG low/medium, 1440p otherwise; the window and OBS output
-upscale back. `kvlr/bench_4k.py` times the models at each size (results stay local, in `installer/build/`, because
-NVIDIA's VFG licence forbids publishing them). Not yet tried with a real card; the console must send SDR (10-bit HDR
-isn't read).
+**4K capture cards** (`framegen/kvlr_capture.py`, setting `capture_work`, launcher-only group "Capture card"; hook in
+`run.py` after the settings load). Since 0.3.7 upstream asks the card for the size in its own Picture → "Capture card
+resolution" (1080p, 1440p or 4K), so our old `capture_size` setting was dropped at the 0.3.9 merge. Frame generation
+then works at the "work size": Auto is 1080p for 90 and 120 fps, and at 60 fps the captured size with NVIDIA VFG
+low/medium, 1440p otherwise; the window and OBS output upscale back. `kvlr/bench_4k.py` times the models at each size
+(results stay local, in `installer/build/`, because NVIDIA's VFG licence forbids publishing them). The console must send
+SDR (10-bit HDR isn't read). An Elgato Cam Link 4K takes 4K at up to 30 fps only (1080p at 60).
 
 **One taskbar button** (`installer/launcher/KvlrTaskbar.cs`, hook in `Ui.cs` `Wire`): the launcher, the pipeline's
 video window and the chiaki-ng it started get the same `System.AppUserModel.ID` (`KvlrTV.KvlrPS5FrameGen`) plus the

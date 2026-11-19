@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
-from . import looks
+from . import fill, looks
 
 DEFAULT_PATH = Path(os.environ.get("APPDATA", Path.home())) / "framegen" / "settings.json"
 
@@ -38,8 +38,11 @@ class Spec:
     # there, so no-break spaces keep "90 Hz" together; the in-video menu's font can't draw them, so help has none)
     impact: dict = field(default_factory=dict)  # "picture" and/or "speed": a rough line on what it does to the picture
     # and to speed or delay, shown in the launcher and the in-video menu (plain ASCII). Numbers are measured (IMPACT_PC).
-    experimental: bool = False  # built without the hardware to test it: tagged as Experimental in the launcher (with
-    # Send feedback) and in the in-video menu
+    experimental: bool = False  # built without the hardware (or a real game) to test it: tagged as Experimental in the
+    # launcher (with Send feedback) and in the in-video menu
+    sources: tuple = ()  # only used with these sources (framegen/sources.py kinds; () = all). With another one, the
+    # launcher (for the source picked on its Play page) and the in-video menu (run.py) grey it out, with its note:
+    elsewhere: dict = field(default_factory=dict)  # source kind -> why it isn't used there ("": any other source)
 
     def name(self, value: Any) -> str:
         return self.names.get(value, str(value))
@@ -48,8 +51,15 @@ class Spec:
         """Whether this setting is used with these values (e.g. VFG quality only while NVIDIA VFG is picked)."""
         return not self.applies or values.get(self.applies[0]) in self.applies[1]
 
+    def unused_with(self, source: str) -> str | None:
+        """Why this setting isn't used with frames from `source` (a framegen/sources.py kind), or None if it is."""
+        if not self.sources or source in self.sources:
+            return None
+        return self.elsewhere.get(source) or self.elsewhere.get("") or "Not used with this source."
+
 
 ON_OFF = {True: "On", False: "Off"}
+CAPTURE_SIZES = {"1080p": (1920, 1080), "1440p": (2560, 1440), "2160p": (3840, 2160)}  # Capture card resolution
 IMPACT_PC = "an RTX 4070 Ti SUPER"  # where the numbers in `impact` and the hints were measured
 # scripts/looks_timing.py: GPU time of the built-in looks on a 1440p window (0.02 to 0.34 ms) and at 1080p for clips
 # (0.01 to 0.19 ms), measured while chiaki-ng streamed.
@@ -95,6 +105,17 @@ SPECS: tuple[Spec, ...] = (
               "stays even. Menus that run at 60 fps look a little less smooth with it.",
          impact={"picture": "Even motion in a game locked at 30 fps, whatever the scene.",
                  "speed": "None. At most one frame (17 ms) later for a moment after the game stutters."}),
+    # framegen/cadence.py DipWatch + FrameTimeline.at_arrival. Tried on simulated 30 fps games that hold frames for 3 or
+    # 4 ticks (tests/test_dips.py, scratchpad numbers in notes/backlog.md), not a real one yet. Off by default: it adds
+    # delay while the game dips.
+    Spec("even_dips", "Dip smoothing", (False, True), False, ON_OFF, group="Smoothness",
+         applies=("interp", (True,)), experimental=True,
+         help="For 30 fps games that sometimes drop below 30, as some big open-world games do on a base console. "
+              "At each dip a frame stays up longer and the next one jumps. With this on, SmoovPlay spaces the "
+              "frames it draws by when the game's frames arrived, so a dip looks like a brief slow-down instead. "
+              "It's only on while the game dips, and adds delay then.",
+         impact={"picture": "A dip below 30 fps looks like a brief slow-down, not a freeze and a jump.",
+                 "speed": "While it dips: 17 to 50 ms more delay, and more graphics card work."}),
     # RIFE: only the model SmoovPlay is tuned and tested with (setup prepares it). interpolator.MODELS has more, for
     # testing with run.py --model; one becomes a choice here once it's tested in real time and setup prepares it.
     # NVIDIA VFG (framegen/vfg.py): offered once the user has set it up on the launcher's Settings page. Its licence
@@ -139,24 +160,25 @@ SPECS: tuple[Spec, ...] = (
                  "speed": "TensorRT is about 12% faster at full motion detail, PyTorch at half."}),
     Spec("motion", "Motion detail", ("auto", "full", "half"), "auto",
          {"auto": "Auto", "full": "Full", "half": "Half"}, live=False, group="Smoothness", applies=("model", ("4.22.lite",)),
-         hints={"auto": "Full, or Half at 120 fps. Recommended.", "full": "Sharpest on fast motion. The slowest.",
+         hints={"auto": "Full; Half at 120 fps or a 1440p capture at 90; less for 4K. Recommended.", "full": "Sharpest on fast motion. The slowest.",
                 "half": "About 40% faster. A little softer on fast detail."},
          help="How finely RIFE tracks movement. Full follows small, fast details best, like railings or distant "
-              "cars; Half takes about 40% less time but softens them a little. Auto uses Half at 120 fps (or for "
-              "a stream above 1440p) and Full otherwise. Only used with RIFE.",
+              "cars; Half takes about 40% less time but softens them a little. Auto uses Half at 120 fps or for a "
+              "1440p capture at 90, a quarter for a 4K capture, and Full otherwise. Only used with RIFE.",
          impact={"picture": "Half is a little softer on small, fast details.",
                  "speed": "Half takes about 40% less time per AI frame."}),
     Spec("scaler", "Upscaler", ("fsr", "vsr", "bilinear"), "fsr",
          {"fsr": "AMD FSR 1", "vsr": "NVIDIA RTX VSR", "bilinear": "Bilinear"}, group="Picture", quick=True,
          later="Support for other upscalers may come in a later version.",
          hints={"fsr": "Sharp and almost free: about 0.1\u00a0ms a frame. Recommended.",
-                "vsr": "NVIDIA's AI upscaler. Also smooths compression blocks, but takes about 1.6\u00a0ms a frame, "
-                       "which can cost in-between frames at 90 and 120 fps.",
+                "vsr": "NVIDIA's AI upscaler, Experimental. It comes with NVIDIA VFG's download (RTX 40 and 50 "
+                       "series); without it, FSR\u00a01 is used. Heavier.",
                 "bilinear": "Plain resizing, the softest. For comparison."},
          help="Enlarges the picture from the game (usually 1080p) to fill your window or screen, so it only "
               "matters when that's bigger than 1080p, like a 1440p or 4K display. Key: U.",
          impact={"picture": "Only matters on a display bigger than the stream, like 1440p or 4K.",
-                 "speed": "About 0.1 ms a frame for FSR 1. RTX VSR (not in the installed app) takes about 1.6 ms."}),
+                 "speed": "About 0.1 ms a frame for FSR 1. RTX VSR runs an AI model on every frame, which can "
+                          "cost in-between frames at 90 and 120 fps."}),
     Spec("fsr_sharpness", "FSR sharpening", (0.0, 0.25, 0.5, 1.0, 2.0), 0.5,
          {0.0: "Max", 0.25: "High", 0.5: "Medium", 1.0: "Low", 2.0: "Minimal"}, group="Picture", applies=("scaler", ("fsr",)),
          hints={0.0: "Crispest. Can make compression blocks stand out.", 0.5: "Balanced. The default.",
@@ -165,11 +187,13 @@ SPECS: tuple[Spec, ...] = (
               "of a weak Wi-Fi stream from standing out. Only used with AMD FSR 1.",
          impact={"picture": "More is crisper; less keeps a blocky stream calmer.", "speed": "No difference."}),
     Spec("vsr_quality", "RTX VSR quality", (1, 2, 3, 4), 2, {1: "Low", 2: "Medium", 3: "High", 4: "Ultra"},
-         group="Picture", applies=("scaler", ("vsr",)),
-         help="How hard RTX VSR works to clean up and sharpen the picture. Higher looks cleaner but takes longer, "
-              "which can cost in-between frames at 90 and 120 fps. Only used with RTX VSR.",
+         group="Picture", applies=("scaler", ("vsr",)), experimental=True,
+         help="How hard RTX VSR works to clean up and sharpen the picture. Higher looks cleaner but asks more of the "
+              "GPU, which can cost in-between frames at 90 and 120 fps. Only used with RTX VSR, which comes with "
+              "NVIDIA VFG's download from NVIDIA. On a capture card's uncompressed picture it uses NVIDIA's models "
+              "for clean video.",
          impact={"picture": "Higher is cleaner and sharper.",
-                 "speed": "Per frame at 1440p: Low 1.3 ms, Medium 1.6, High 3.6, Ultra 4.9."}),
+                 "speed": "Each step up asks more of the GPU."}),
     # framegen/hdr.py. Off by default, and then nothing changes: an HDR stream comes out washed out, and SmoovPlay says
     # so. "hdr10" needs the DXGI presentation (NVIDIA) and Windows' HDR; without them run.py uses "sdr" for the session.
     Spec("hdr", "HDR", ("off", "sdr", "hdr10"), "off",
@@ -185,6 +209,25 @@ SPECS: tuple[Spec, ...] = (
               "stream without HDR isn't changed. Applies the next time you press Play.",
          impact={"picture": "An HDR stream's true colours, instead of a washed-out picture.",
                  "speed": "About 0.7 ms of graphics card time for each frame from the game."}),
+    # run.py asks the card for this size (framegen/capture.py pick_mode: else the largest it has under it). Every new
+    # frame is drawn at the size captured, so the cost grows with it: notes in the hints, measured by scripts/benchmark.py.
+    Spec("capture_size", "Capture card resolution", tuple(CAPTURE_SIZES), "1080p",
+         {"1080p": "1080p", "1440p": "1440p", "2160p": "4K"}, live=False, group="Picture", experimental=True,
+         hints={"1080p": "The lightest: 60, 90 or 120 fps on a fast card. Recommended. The default.",
+                "1440p": "About twice the work of 1080p: fine at 60 fps on most cards, but 90 can run sluggish. "
+                         "Sharper on a 1440p or 4K screen.",
+                "2160p": "About four times the work of 1080p: likely to run sluggish, even at 60 fps on a fast card. "
+                         "Only for a 4K screen."},
+         help="Capture cards only (Remote Play is 1080p at most). Higher is sharper on a bigger screen, but every new "
+              "frame is drawn at this size, so it can run quite sluggish. A capture bigger than your screen gains "
+              "nothing. The console must send it too. Experimental; applies the next time you press Play.",
+         impact={"picture": "Sharper on a 1440p or 4K screen; no gain on a 1080p one.",
+                 "speed": "1440p: about twice the work of 1080p. 4K: about four times. Both can run sluggish."},
+         sources=("capture",),
+         elsewhere={"chiaki": "Only used with a capture card. PS5 Remote Play streams 1080p at most.",
+                    "window": "Only used with a capture card. App window capture is scaled to 1080p.",
+                    "tap": "Only used with a capture card. The app sends its frames at its own size.",
+                    "": "Only used with a capture card."}),
     # framegen/looks.py (the looks; "Which look" lists the built-in ones, then the user's, from looks.CHOICES, which
     # the looks library keeps up to date) and framegen/looks_gl.py (drawing them, after the upscaler).
     Spec("look_on", "Look", (False, True), False, ON_OFF, group="Looks",
@@ -201,6 +244,19 @@ SPECS: tuple[Spec, ...] = (
          help="Fills the whole screen. It also skips the Windows desktop compositor, which removes about 12 ms "
               "of delay, so it's the best way to play. Key: F.",
          impact={"speed": "About 12 ms less delay than a window, and G-Sync or FreeSync works."}),
+    # framegen/fill.py. Consoles send 16:9 only, so on an ultrawide these are ways of laying out the same 16:9 picture,
+    # never more of the game: the names, hints and help say so.
+    Spec("fill", "Fill the screen", fill.FILLS, "fit",
+         {"fit": "Fit", "zoom": "Zoom", "stretch": "Stretch", "panorama": "Panorama"}, group="Display",
+         hints={"fit": "All of the picture, true to shape, with black bars on an ultrawide. The default.",
+                "zoom": "Fills the screen by cutting off the top and bottom of the picture, which can cut the HUD.",
+                "stretch": "Fills the screen by making everything wider.",
+                "panorama": "The middle stays close to true shape and the sides take the stretch, like a TV's wide "
+                            "zoom. Ultrawide only."},
+         help="For an ultrawide screen. Consoles send 16:9 only, so none of these is real ultrawide: there's no more "
+              "of the game to show. They crop or stretch the same 16:9 picture. Key: Z.",
+         impact={"picture": "The same 16:9 picture, cropped or stretched: consoles send 16:9 only.",
+                 "speed": "No real difference. Panorama adds one pass over the screen: about 0.02 ms."}),
     Spec("vsync", "VSync", (False, True), False, ON_OFF, group="Display",
          help="Off: the lowest delay, but fast camera turns can show a tear line across the picture. On: no "
               "tearing, with a little more delay. With a G-Sync or FreeSync display, On gives you both: no tearing "
@@ -230,6 +286,16 @@ SPECS: tuple[Spec, ...] = (
               "dot: green, your PC keeps up; amber, it's tight; red, it's falling behind, so try a lower frame rate. "
               "Detailed adds the AI frame time, the upscaler and, at 90 and 120 fps, the extra frames shown (below "
               "about 95%, your PC is falling behind)."),
+    Spec("overlay_corner", "Stats overlay position", ("top_left", "top_right", "bottom_left", "bottom_right"),
+         "top_left", {"top_left": "Top left", "top_right": "Top right", "bottom_left": "Bottom left",
+                      "bottom_right": "Bottom right"}, group="Display", applies=("overlay", (True,)),
+         help="The corner the stats go in, tucked into its edges. Pick one your game's own HUD leaves free."),
+    Spec("overlay_size", "Stats overlay size", ("small", "medium", "large"), "small",
+         {"small": "Small", "medium": "Medium", "large": "Large"}, group="Display", applies=("overlay", (True,)),
+         hints={"small": "Out of the way of the game's own HUD.", "medium": "Easier to read from further away.",
+                "large": "For a TV across the room."},
+         help="How big the stats are. Small stays out of the way of the game's own HUD; Large is for a TV across the "
+              "room."),
     # framegen/replay.py. Memory in the hints: replay.memory_mb() for 1080p at 90 fps (tests/test_replay.py checks).
     Spec("replay", "Instant replay", (0, 30, 60, 120, 300), 0,
          {0: "Off", 30: "Last 30 seconds", 60: "Last minute", 120: "Last 2 minutes", 300: "Last 5 minutes"},
@@ -272,7 +338,8 @@ SPECS: tuple[Spec, ...] = (
          help="Minimises chiaki-ng's own window while SmoovPlay's video is open, so your graphics card doesn't "
               "spend time drawing a copy nobody sees. chiaki-ng keeps streaming, playing sound and reading your "
               "controller, and its window comes back when you stop.",
-         impact={"speed": "Saves the time your graphics card spends drawing chiaki-ng's window."}),
+         impact={"speed": "Saves the time your graphics card spends drawing chiaki-ng's window."},
+         sources=("chiaki",), elsewhere={"": "Only used with PS5 Remote Play."}),
     Spec("audio_sync", "Sound in sync", (True, False), True, ON_OFF, group="PS5 Remote Play",
          help="The sound (chiaki-ng's, or a capture card's, which SmoovPlay plays) would come as it arrives, while "
               "the picture spends a little longer in SmoovPlay. On holds the sound back by that time (about 30 ms "
@@ -374,6 +441,8 @@ def specs_json(specs: tuple[Spec, ...] = SPECS) -> dict:
         "specs": [{"key": s.key, "label": s.label, "group": s.group, "help": s.help, "default": s.default,
                    "live": s.live, "saved": s.saved, "later": s.later, "quick": s.quick, "impact": s.impact,
                    "experimental": s.experimental,
+                   "sources": list(s.sources) or None,
+                   "elsewhere": s.elsewhere or None,
                    "applies": {"key": s.applies[0], "values": list(s.applies[1])} if s.applies else None,
                    "choices": [{"value": v, "name": s.name(v), "hint": s.hints.get(v, "")} for v in s.choices]}
                   for s in specs],

@@ -1,7 +1,6 @@
-"""KVLR edition: 4K capture cards with steady 60/90/120 fps frame generation (settings "capture_size", "capture_work").
+"""KVLR edition: 4K capture cards with steady 60/90/120 fps frame generation (upstream's "capture_size" + setting "capture_work").
 
-Upstream always asks a card for 1920x1080. Here the card is asked for the size chosen (Auto: the largest it offers,
-up to 3840x2160; framegen.capture.pick_mode takes the largest at or under it), and frame generation then works at
+Upstream's "Capture card resolution" setting (since 0.3.7) asks the card for 1080p, 1440p or 4K. Frame generation then works at
 the "work size": the captured size, or smaller when the AI model can't keep the frame rate there. The window and
 OBS output upscale back to the screen's size as they do for Remote Play.
 
@@ -14,35 +13,12 @@ Auto therefore: 90 and 120 fps work at 1080p; 60 fps works at the captured size 
 quality and at 1440p (at most) otherwise. (NVIDIA's licence for VFG forbids publishing its results, so none are given
 here; kvlr/bench_4k.py shows them on the PC.)
 
-Hooks (marked KVLR) in run.py: request_size() where the capture source opens; WorkSize() wraps the source once the
-settings are loaded.
+Hook (marked KVLR) in run.py: wrap() puts WorkSize() round the source once the settings are loaded.
 """
 from __future__ import annotations
 
-import json
-from pathlib import Path
 
 SIZES = {"2160": (3840, 2160), "1440": (2560, 1440), "1080": (1920, 1080)}
-UPSTREAM_DEFAULT = "1920x1080"  # run.py's --capture-size default: anything else was asked for on the command line
-
-
-def _saved(settings_arg: str) -> dict:
-    """The saved settings, read before run.py loads them (the source opens first)."""
-    try:
-        if settings_arg.lower() == "none":
-            return {}
-        return json.loads(Path(settings_arg).read_text(encoding="utf-8-sig"))
-    except (OSError, ValueError, AttributeError):
-        return {}
-
-
-def request_size(capture_size_arg: str, settings_arg: str) -> tuple[int, int]:
-    """The size to ask the card for: --capture-size when given, else the "capture_size" setting."""
-    if capture_size_arg != UPSTREAM_DEFAULT:
-        w, h = map(int, capture_size_arg.split("x"))
-        return w, h
-    choice = str(_saved(settings_arg).get("capture_size", "auto"))
-    return SIZES.get(choice, SIZES["2160"])  # auto: up to 4K, the card's largest at or under it
 
 
 def work_size(settings, w: int, h: int) -> tuple[int, int]:

@@ -66,18 +66,10 @@ def kvlr_specs(Spec, on_off: dict) -> tuple:
              help="How much picture data the PS5 is asked to send on your home network. Higher means fewer "
                   "compression marks for the AI frames and the upscaler to work from; 100 Mbps suits a wired "
                   "connection, 30 to 50 Mbps a good 5 GHz Wi-Fi. Applies from the next Play."),
-        Spec("capture_size", "Capture size", ("auto", "2160", "1440", "1080"), "auto",
-             {"auto": "Auto (up to 4K)", "2160": "4K (3840x2160)", "1440": "1440p", "1080": "1080p"},
-             live=False, group="Capture card",
-             help="The picture size asked of a capture card. Auto takes the largest it offers, up to 4K. Set the "
-                  "console's output to the same size at 60 Hz, with HDR off (10-bit HDR isn't read yet). A 4K "
-                  "card on USB needs a fast port (USB 3.2 Gen 2, 10 Gbps). Applies from the next Play.",
-             hints={"auto": "The card's largest, up to 4K", "2160": "Native 4K from the console",
-                    "1440": "Less to carry over USB", "1080": "As SmoovPlay asks"}),
         Spec("capture_work", "Frame generation size", ("auto", "native", "1440", "1080"), "auto",
              {"auto": "Auto", "native": "As captured", "1440": "1440p", "1080": "1080p"},
              live=False, group="Capture card",
-             help="The size the AI frames are made at; the window and OBS output upscale from it. Auto works at "
+             help="The size the AI frames are made at; the window and OBS output upscale from it. The size asked of the card is Picture → Capture card resolution. Auto works at "
                   "1080p for 90 and 120 fps, which is what keeps up from a 4K card today, and at 60 fps keeps "
                   "4K with NVIDIA VFG (low or medium) and 1440p with RIFE. Applies from the next Play.",
              hints={"auto": "1080p at 90/120 fps, up to 4K at 60", "native": "Sharpest; won't hold 90/120 from 4K yet",

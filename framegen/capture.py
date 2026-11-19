@@ -695,8 +695,30 @@ class CardSource:
             if self._delay_s is not None:
                 self.player.set_delay(self._delay_s)
         self.player.push(pcm)
+        if (now := time.perf_counter()) >= self._sound_report_t:
+            self._sound_report_t = now + 60.0
+            self._report_sound(final=False)
+
+    def _report_sound(self, final: bool) -> None:
+        """Into the log: how the sound played (framegen.audio.sound_report), once a minute when something went
+        wrong, and for the whole session at the end, so diagnostics say what any clicks were."""
+        stats = getattr(self.player, "stats", None)
+        if stats is None:  # (a stand-in player)
+            return
+        from .audio import sound_report
+        try:
+            now = stats()
+        except Exception:  # noqa: BLE001 - only a log line
+            return
+        line = sound_report(now, None if final else (self._sound_seen or {}))
+        if not final:
+            self._sound_seen = now
+        if line:
+            print(f"[capture] sound{' this session' if final else ', last minute'}: {line}")
 
     _delay_s: float | None = None
+    _sound_report_t = 0.0
+    _sound_seen: dict | None = None
     _rate, _channels = 48000, 2
 
     def read_sound(self) -> list:
@@ -740,6 +762,7 @@ class CardSource:
             pass
         if self.player is not None:
             self.player.close()
+            self._report_sound(final=True)
         print(f"[capture] dropped frames: {self.dropped}")
 
 

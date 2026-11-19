@@ -3,7 +3,8 @@
 // that licence here; then python -m framegen.vfg_setup downloads NVIDIA's pinned package from NVIDIA's own index into
 // runtime\vfx (Paths.Vfx, passed to every Python process as FRAMEGEN_VFX_PATH).
 // Its output goes to logs\vfg-setup.txt (not *.log, so a diagnostics report still picks the last session's log).
-// NVIDIA's licence also forbids publishing VFG's benchmark results, so nothing here shows or logs its speed.
+// NVIDIA's licence also forbids publishing VFG's benchmark results, so nothing here shows or logs its speed. The same
+// package brings RTX VSR (framegen/rtxvsr.py VfxVsr), under the same licence.
 
 using System;
 using System.Collections.Generic;
@@ -96,7 +97,7 @@ namespace SmoovPlay
             {
                 bool ours = vfgStatus["ours"] is bool && (bool)vfgStatus["ours"];
                 text = VfgUnsupported.Length > 0 ? "NVIDIA VFG is set up, but this PC can't use it: " + VfgUnsupported
-                     : "NVIDIA VFG is set up" + (ours ? "." : " (" + vfgStatus["path"] + ").");
+                     : "NVIDIA VFG is set up" + (ours ? "" : " (" + vfgStatus["path"] + ")") + ", and with it NVIDIA RTX VSR (Upscaler).";
                 if (ours)
                 {
                     button = "Remove";
@@ -109,7 +110,7 @@ namespace SmoovPlay
                 text = VfgUnsupported + " This PC can't use it, but RIFE 4.22 lite works on every graphics card SmoovPlay supports.";
             else
             {
-                text = "NVIDIA VFG is optional: a separate download from NVIDIA (about " + vfgStatus["size_mb"] + " MB), under NVIDIA's licence.";
+                text = "NVIDIA VFG is optional: a separate download from NVIDIA (about " + vfgStatus["size_mb"] + " MB), under NVIDIA's licence. It also brings NVIDIA RTX VSR (Upscaler).";
                 button = "Set up NVIDIA VFG";
                 click = AskSetUpVfg;
             }
@@ -151,8 +152,8 @@ namespace SmoovPlay
             var licences = VfgLicences();
             Ask("\uE946", "Accent", "Set up NVIDIA VFG",
                 "NVIDIA VFG is NVIDIA's software, not part of SmoovPlay. SmoovPlay downloads it from NVIDIA (about " + vfgStatus["size_mb"]
-                + " MB), and using it means you accept NVIDIA's licence: " + string.Join(", ", licences.Keys) + ". Among other things, it doesn't "
-                + "allow publishing VFG's speed or quality results, so SmoovPlay keeps them out of Copy diagnostics.",
+                + " MB), along with NVIDIA RTX VSR, and using them means you accept NVIDIA's licence: " + string.Join(", ", licences.Keys) + ". Among other things, it doesn't "
+                + "allow publishing their speed or quality results, so SmoovPlay keeps them out of Copy diagnostics.",
                 "Accept and download", "Read the licence", "Cancel", r =>
                 {
                     if (r == 1) StartVfgInstall(thenDetect);

@@ -104,8 +104,11 @@ The settings are in two places, which stay in step:
 
 - **The launcher's Settings page.** With nothing playing, changes are saved for the next session. While a stream
   plays, the page shows **LIVE** and changes reach the video straight away, as if made in the video window's menu.
-- **The video window's menu.** Press **M** (or Tab): ↑/↓ pick a setting, ←/→ change it, M or Esc closes it. The
-  video keeps playing behind it, so changes can be judged as they're made.
+- **The video window's menu.** Press **M** (or Tab). Its main page has the quick picks (frame generation, output
+  frame rate, upscaler) and a row for each section (Smoothness, Picture, Looks, Display, Instant replay, PS5 Remote
+  Play, as on the Settings page): ↑/↓ pick, ←/→ change a setting, Enter or → opens a section, Esc or Backspace goes
+  back a page, and M (or Esc on the main page) closes it. It reopens where it was left. The video keeps playing
+  behind it, so changes can be judged as they're made.
 
 Both save to `%APPDATA%\framegen\settings.json`. Each setting explains itself on the page, and each choice in a
 dropdown has a line on when to pick it.
@@ -130,11 +133,13 @@ made-up PCs.
 | Frame generation | On / Off | live |
 | Output frame rate | 60 / 90 / 120 fps | live (falls back to 60 when the GPU can't keep up) |
 | Even out 40-60 fps | On / Off (Experimental: even motion for games between 30 and 60 fps) | live |
+| Dip smoothing | Off / On (Experimental: a 30 fps game's dips become a brief slow-down) | live |
 | Upscaler | AMD FSR 1 / NVIDIA RTX VSR / Bilinear (others may come later) | live |
 | FSR sharpening | Max … Minimal | live |
-| RTX VSR quality | Low / Medium / High / Ultra | live |
+| RTX VSR quality | Low / Medium / High / Ultra (Experimental: RTX VSR comes with NVIDIA VFG's download) | live |
 | Stats overlay, Fullscreen, VSync | On / Off | live |
 | Stats overlay style | Minimal (frames on screen, the game's rate, the delay, a keeping-up dot) / Detailed | live |
+| Stats overlay position, size | Top left / Top right / Bottom left / Bottom right; Small (out of the HUD's way) / Medium / Large | live |
 | Window presentation | Standard / Low delay (Experimental: DXGI flip model, so a window skips the compositor's copy and G-Sync works in a window; fullscreen uses Standard; `--present gl\|dxgi`). With Windows' HDR on for the main display it's always DXGI, fullscreen as a borderless window: OpenGL's own fullscreen switches the display to SDR while it's in front (`FRAMEGEN_KEEP_HDR=0` turns this off) | next Play |
 | Minimise chiaki-ng | On / Off | live (PS5 Remote Play only) |
 | Sound in sync | On / Off (chiaki-ng holds its sound back to meet the picture) | live (PS5 Remote Play only) |
@@ -166,6 +171,13 @@ delay, so it lines up), and the game's sound, which chiaki-ng copies into a seco
 at 1080p), to memory on a side stream, and to NVENC (else AMF, QSV or x264) on a thread of their own. Saving cuts
 from the keyframe before the start (one a second) and remuxes to MP4 without re-encoding; a before & after video is
 composed and encoded by `python -m framegen.replay compose` in a low-priority process of its own.
+
+Fill the screen (`framegen/fill.py`): where the picture goes on a screen that isn't its shape. Consoles send 16:9 only,
+so on an ultrawide each mode lays out the same 16:9 picture: Fit and Zoom are a rectangle (Zoom's goes past the
+screen's edges), Stretch is the whole screen, and Panorama draws Fit into a half-float texture, then bends it across
+the screen with u = atan(t·x) / atan(t), t picked so the middle is 5% (21:9) to 15% (32:9) wider than true. Messages and
+the menu go on the part of the picture that's on screen. Clips and the instant replay record the stream, not the screen,
+so they're unchanged.
 
 Looks (`framegen/looks.py`, `framegen/looks_gl.py`): a look is JSON, `{"name", "nodes": [{"type", "on", "mix",
 ...}]}`, cleaned by `normalize()`. Yours are files in `%APPDATA%\framegen\looks`, with LUTs in its `luts` folder. The
@@ -218,12 +230,21 @@ When the window is bigger than the frame (fullscreen on a 1440p monitor, say), i
 - **AMD FSR 1** (default): edge-adaptive upscaling plus mild sharpening, run as two shader passes while the
   frame is drawn, so real and generated frames get the same treatment. It costs about 0.1 ms of GPU time per
   frame at 2560×1440 (bilinear: about 0.04 ms).
-- **NVIDIA RTX Video Super Resolution**: also cleans up compression artefacts, but costs 1.3–4.9 ms per frame
-  at 1440p (quality Low…Ultra, RTX 4070 Ti SUPER). At 90 Hz that's three passes per real frame, which costs
-  some of the extra in-between frames. In side-by-side use it looked about the same as FSR 1. It needs the
-  [RTX Video SDK](https://developer.nvidia.com/rtx-video-sdk) (free, NVIDIA developer login), unpacked wherever
-  `NV_RTX_VIDEO_SDK` points. Build `native\rtxvsr\build.bat` once. It only works when frames are decoded on the
-  GPU (the default for Remote Play).
+- **NVIDIA RTX Video Super Resolution** (Experimental): also cleans up compression artefacts. It runs an AI model
+  on every frame drawn (at 90 Hz, three per real frame), which can cost some of the extra in-between frames. It
+  only works when frames are decoded on the GPU (the default for Remote Play), and not with HDR output yet. It runs
+  one of two ways (`framegen/rtxvsr.py`):
+  - **NVIDIA's package** (what the installed app uses): the VideoSuperRes effect in `nvidia-vfx`, the package
+    NVIDIA VFG comes in, so it's there once NVIDIA VFG is set up (RTX 40 and 50 series). SmoovPlay ships nothing of
+    NVIDIA's. Frames go in and out as NVIDIA's packed 10-bit RGB; the window copies the output words into an R32UI
+    texture and draws it through an RGB10_A2 view of the same memory, so nothing unpacks them. A capture card's
+    uncompressed frames get NVIDIA's models for clean video. Its licence forbids publishing benchmark results, so
+    its timings stay out of the log.
+  - **The [RTX Video SDK](https://developer.nvidia.com/rtx-video-sdk)** (free, NVIDIA developer login), for
+    developers: unpack it wherever `NV_RTX_VIDEO_SDK` points and build `native\rtxvsr\build.bat` once. The wrapper
+    links a library from the SDK, so it can't ship in the MIT app. It costs 1.3–4.9 ms per frame at 1440p (quality
+    Low…Ultra, RTX 4070 Ti SUPER), and in side-by-side use it looked about the same as FSR 1. `FRAMEGEN_VSR=sdk`
+    picks it when NVIDIA's package is there too.
 
 The overlay names the scaler in use, and the GPU time per frame is printed on exit.
 </details>
@@ -250,7 +271,11 @@ frames dropped and kept as ground truth for `--score`. Test mode does the same t
 (`ChiakiSource(test=TestMode(True))`, switchable mid-stream from the menu's Simulate a 30 fps game), and scoring turns on with it.
 
 Duplicate detection compares 16×16 block means: noise averages out, but a small moving object still trips the
-maximum. Over the Remote Play stream, repeats are recognised by their size before decoding.
+maximum. Over PS5 Remote Play, an app's window and the frame tap, a decoded repeat is never an exact copy, so the
+detector learns the line between repeats and new frames from the last 16 frames' mean differences (two bands, a
+repeat's 10 or more times smaller); in real 30 fps Remote Play sessions it called new frames 99.5-100% and repeats
+93-99% right over Ethernet (83% over Wi-Fi). Each frame's compressed size is kept in the frame log and the stream
+check.
 
 `framegen/fastrife.py` is a restructured RIFE forward pass (same maths, verified to about 60 dB against the
 reference) that cut 1080p interpolation from about 16 ms to about 9 ms: one warp per direction instead of two,
@@ -377,6 +402,16 @@ Timing from a recorded clip, not a live stream, paced at 60 Hz with the OpenGL w
   they stutter. **Even out 40-60 fps** (on by default, Experimental) times each frame and draws evenly spaced ones
   from them, for about one frame (17 ms) more delay. Tested with real footage played as 43 and 47 fps games, not yet
   with a real one.
+- **30 fps games that dip below 30** hold a frame for 3 ticks (50 ms) or 4 (67 ms, waiting for the next 30 fps
+  slot, as Gotham Knights' hitches did on PS5 Remote Play), then jump. **Dip smoothing** (off by
+  default, Experimental; framegen/cadence.py DipWatch and FrameTimeline.at_arrival) times each frame by the tick it
+  arrived on while the game dips (two dips within a second; off 3 s after the last) and draws evenly spaced frames
+  from them, with up to 3 ticks of delay. On simulated games holding 10-20% of their frames, motion unevenness fell
+  from 0.28-0.58 to 0.02-0.11 (0 = even), for 17-25 ms more delay with 50 ms holds and 33-49 ms with 67 ms
+  holds (90 fps the most), and none for a game holding 30. Every frame shown while it's on is a generated one, so
+  the GPU does more: through the fake PS5 at 90 fps (`frametap_fake.py --game-fps 27`, encoder on the same GPU) the
+  median delay went from 37 to 66 ms and extra frames shown from 97% to 79-83% (two runs). Not tried with a real game
+  that dips yet.
 - **One frame generator at a time.** Leave NVIDIA Smooth Motion, AMD Fluid Motion Frames and Lossless Scaling off
   for SmoovPlay and chiaki-ng: on top of SmoovPlay they'd make frames out of its generated ones (more wobble) and
   add delay. Your other games aren't affected.

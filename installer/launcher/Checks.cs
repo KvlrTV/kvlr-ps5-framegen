@@ -387,6 +387,22 @@ namespace SmoovPlay
         [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern bool EnumDisplayDevices(string dev, int i, ref DISPLAY_DEVICE dd, int flags);
         [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern bool EnumDisplaySettings(string dev, int mode, ref DEVMODE dm);
 
+        /// <summary>The widest shape among the connected displays (width over height, as set now), or 16:9 when none
+        /// can be read: the Settings page draws Fill the screen on it.</summary>
+        public static double WidestScreenRatio()
+        {
+            double best = 0;
+            var dd = new DISPLAY_DEVICE { cb = Marshal.SizeOf(typeof(DISPLAY_DEVICE)) };
+            for (int i = 0; EnumDisplayDevices(null, i, ref dd, 0); i++, dd.cb = Marshal.SizeOf(typeof(DISPLAY_DEVICE)))
+            {
+                if ((dd.StateFlags & 1) == 0) continue;  // DISPLAY_DEVICE_ATTACHED_TO_DESKTOP
+                var dm = new DEVMODE { dmSize = (short)Marshal.SizeOf(typeof(DEVMODE)) };
+                if (!EnumDisplaySettings(dd.DeviceName, -1, ref dm) || dm.dmPelsHeight <= 0) continue;
+                best = Math.Max(best, (double)dm.dmPelsWidth / dm.dmPelsHeight);
+            }
+            return best > 0 ? best : 16.0 / 9.0;
+        }
+
         /// <summary>The fastest refresh rate a connected display is set to, and the fastest it could be set to.</summary>
         static void Display(Check c)
         {

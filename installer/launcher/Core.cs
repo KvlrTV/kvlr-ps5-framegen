@@ -697,6 +697,8 @@ namespace SmoovPlay
                 WorkingDirectory = p.Dev ? p.App : Path.GetDirectoryName(p.Chiaki),
             };
             psi.EnvironmentVariables["CHIAKI_FRAMETAP"] = "1";
+            string renderer = Renderer(psi.EnvironmentVariables["CHIAKI_FRAMETAP_RENDERER"]);
+            if (renderer != null) psi.EnvironmentVariables["CHIAKI_FRAMETAP_RENDERER"] = renderer;
             var pr = Process.Start(psi);
             try
             {
@@ -704,8 +706,22 @@ namespace SmoovPlay
                 File.WriteAllText(Marker(p), pr.Id + " " + pr.StartTime.Ticks);
             }
             catch (Exception) { }
-            log("[launcher] started chiaki-ng");
+            log("[launcher] started chiaki-ng" + (renderer == "opengl"
+                ? " (drawing with OpenGL this time: chiaki-ng's Vulkan has crashed on AMD and Intel graphics; SmoovPlay shows the picture)"
+                : ""));
             return true;
+        }
+
+        /// <summary>What chiaki-ng draws its own window with (CHIAKI_FRAMETAP_RENDERER, our chiaki-ng's switch, for that
+        /// session only): OpenGL without an NVIDIA card, where chiaki-ng's default, Vulkan (with Vulkan decoding), has
+        /// crashed (issue 19, a Radeon RX 9070 XT). SmoovPlay draws the stream itself, so chiaki-ng's window, hidden
+        /// behind it, loses nothing. On NVIDIA it stays as set: Vulkan works there, and an HDR stream needs it. One set
+        /// already (e.g. "vulkan" to try it anyway) is kept.</summary>
+        public static string Renderer(string already)
+        {
+            if (!string.IsNullOrEmpty(already)) return already;
+            if (SystemCheck.GpuName == "unknown" && SystemCheck.OtherGpu == null) SystemCheck.QueryGpu();
+            return SystemCheck.GpuName == "unknown" && SystemCheck.OtherGpu != null ? "opengl" : null;
         }
 
         public static void Close(Process[] procs)
@@ -1174,9 +1190,11 @@ namespace SmoovPlay
                 OnState(PlayState.Playing, null);
             else if (line.StartsWith("[chiaki] this stream was already running"))
                 OnNote("This stream started before SmoovPlay. In chiaki-ng, end the stream and connect again.");
-            else if (line.StartsWith("[chiaki] WARNING:"))
-                OnNote(line.Substring("[chiaki] WARNING:".Length).Trim());
-            else if (line.StartsWith("[chiaki] stream ended"))
+            else if (line.StartsWith("[tap] this stream was already running"))  // another app's compressed frames
+                OnNote("This stream started before SmoovPlay. Restart the stream in the app.");
+            else if (line.StartsWith("[chiaki] WARNING:") || line.StartsWith("[tap] WARNING:"))
+                OnNote(line.Substring(line.IndexOf("WARNING:") + "WARNING:".Length).Trim());
+            else if (line.StartsWith("[chiaki] stream ended") || line.StartsWith("[tap] the app stopped sending frames"))
                 streamEnded = true;
             else if (line.StartsWith("[window-keys] "))
                 OnWindowKeys(line.Substring("[window-keys] ".Length));

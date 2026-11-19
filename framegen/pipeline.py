@@ -10,7 +10,7 @@ import numpy as np
 import torch
 
 from . import delaytest
-from .cadence import Action, CadenceScheduler, CutDetector, DuplicateDetector, FrameTimeline, RhythmLock
+from .cadence import Action, CadenceScheduler, CutDetector, DipWatch, DuplicateDetector, FrameTimeline, RhythmLock
 from .hdr import level8, to_u8
 from .interpolator import STEADY_HUD_THRESHOLD, RifeInterpolator
 from .io import TICK, MiniText, Waiting
@@ -178,6 +178,7 @@ class Stats:
     uneven_ticks: int = 0
     uneven_fps: list = field(default_factory=list)
     uneven_waits: int = 0
+    dip_ticks: int = 0  # Dip smoothing: ticks played with frames timed as they arrived (waits count above)
     wall_s: float = 0.0
     exit: str = "end"  # why run() returned: "end" (source finished), "quit" or "restart" (asked by the sink)
     stale: int = 0  # frames skipped because they arrived before run() started (queued during a restart)
@@ -205,6 +206,8 @@ class Stats:
         if self.uneven_ticks:
             lines.append(f"even timing (a game at about {np.median(self.uneven_fps):.0f} fps): {self.uneven_ticks} "
                          f"ticks, {self.uneven_waits} output frames waited for a late frame")
+        if self.dip_ticks:
+            lines.append(f"dip timing (a 30 fps game dipping below it): {self.dip_ticks} ticks")
         if self.private:
             if self.dedup:
                 lines.append(f"dedup vs truth: {dict(self.dedup)}")
@@ -299,6 +302,9 @@ class Stats:
         if self.uneven_ticks:  # (no figure: its median can round to 60, which read "about 60 fps, between 30 and 60")
             lines.append(f"Game: for {self.uneven_ticks / 60:.0f} s it ran between 30 and 60 fps, and its frames were "
                          "evened out (Even out 40-60 fps)")
+        if self.dip_ticks:
+            lines.append(f"Game: for {self.dip_ticks / 60:.0f} s it dipped below 30 fps, and its frames were spaced by "
+                         "when they arrived (Dip smoothing)")
         lines += list(self.delay_tests)
         if not interp:
             lines.append("Verdict: frame generation was off, so there's nothing to judge")
@@ -398,6 +404,9 @@ class Pipeline:
         # A 40-60 fps game: its frames' own timing, and evenly spaced frames from it (FrameTimeline). in_slot: which
         # frame (TimedFrame.id) is in each of the interpolator's two slots; timed frames go in only when needed.
         timeline, timed, in_slot = FrameTimeline(), False, [-1, -1]
+        # A 30 fps game dipping below 30 (Dip smoothing): its frames timed as they arrive, on the same
+        # timeline. dipping: the setting is on and DipWatch says the game is dipping now.
+        dip_watch, dipping = DipWatch(), False
         reached: tuple = ()  # timed: the frames whose time came with the frame about to be shown
         audio_next, audio_ms = 0.0, None  # when the sound delay is next looked at, and what chiaki-ng was last told
         replay_next = 0.0  # when instant replay is next told the delay
@@ -514,8 +523,14 @@ class Pipeline:
                 np.copyto(self._in_np, tick.frame)
                 it.load(self._in_pinned)
             diff = self.detector.update(it.in_u8)
-            # A source that knows better (Remote Play: compressed frame size) overrides the image check.
+            # A source that knows better (the frame tap's flags, test mode) overrides the image check.
             is_new = diff.is_new if tick.new_hint is None else tick.new_hint
+            # Dip smoothing, by the picture's own call (the 30 fps lock below can't see a dip); not in
+            # test mode, which decides what's new itself, nor without a window
+            dip_watch.update(is_new)
+            dipping = (dip_watch.dipping and sink is not None and gt_fn is None and "game_new" not in tick.extra
+                       and settings is not None and getattr(settings, "even_dips", False))
+            seen_new = is_new
             # Game frame rate set to 30 fps: every other tick is new, the checks only choosing which (not in test
             # mode, which decides itself what's new)
             lock30 = (settings is not None and getattr(settings, "game_fps", "auto") == "30"
@@ -526,6 +541,8 @@ class Pipeline:
             if rhythm is not None:
                 is_new = rhythm.update(is_new, tick.extra.get("size"), bool(tick.extra.get("keyframe")),
                                        tick.extra.get("seq"))
+                if dipping:  # its frames timed as they arrived, which the lock's every-other-tick can't follow
+                    is_new = seen_new
                 if rhythm.moves != rhythm_moves:
                     rhythm_moves = rhythm.moves
                     if t0 >= rhythm_note:  # the game stuttered: its frames moved by a tick
@@ -614,12 +631,20 @@ class Pipeline:
                 # corruption isn't blended into the generated frame. `|` so the cut detector still sees every frame.
                 is_cut = is_new and (cuts.update(diff.mean_diff, diff.cut) | tick.damaged)
                 action = sched.step(is_new, is_cut)
+                timeline.set_at_arrival(dipping)
                 added = timeline.tick(is_new, is_cut, tick.frame, tick.t_arrival)
                 was_timed = timed
-                timed = (timeline.uneven and sink is not None and gt_fn is None
-                         and (settings is None or getattr(settings, "even_out", True)))
+                timed = dipping or (timeline.uneven and sink is not None and gt_fn is None
+                                    and (settings is None or getattr(settings, "even_out", True)))
                 if timed != was_timed:
-                    if timed:
+                    if timed and dipping:
+                        unshown = None
+                        print("[pipeline] game dipping below 30 fps: timing its frames as they arrived")
+                        if hasattr(sink, "toast") and "dips" not in toasted:
+                            toasted.add("dips")
+                            sink.toast("Game dipping below 30 fps: SmoovPlay is spacing its frames by when they "
+                                       "arrived (Dip smoothing)", 6.0)
+                    elif timed:
                         unshown = None
                         print(f"[pipeline] game at about {timeline.fps()} fps: evening out its frames")
                         if hasattr(sink, "toast") and "even" not in toasted:
@@ -635,9 +660,12 @@ class Pipeline:
                     it.prepare(slot)  # (in_u8 holds this tick's frame)
                     in_slot[slot] = added.id
                 if timed:
-                    st.uneven_ticks += 1
-                    if is_new:
-                        st.uneven_fps.append(timeline.fps())
+                    if dipping:
+                        st.dip_ticks += 1
+                    else:
+                        st.uneven_ticks += 1
+                        if is_new:
+                            st.uneven_fps.append(timeline.fps())
                     quarter_due = False
                     phases = timeline.slots(hz)
                     if len(phases) > 1 and not extra_ok:
