@@ -474,7 +474,7 @@ def detect(current: dict, log: Callable[[str], None] = print, timing: dict | Non
         trt, vsr = False, "it needs an NVIDIA RTX card"
     vfg_why = "" if vfg is not None else vfg_unavailable()
     model = current.get("model", BY_KEY["model"].default)
-    model = BY_KEY["model"].default if model == "vfg" else model
+    model = BY_KEY["model"].default if model in ("vfg", "dlssg") else model  # KVLR: dlssg
     testing = timing is not None
     if timing is None:
         timing = time_dml(model, log) if dml_mode else time_rife(model, log)

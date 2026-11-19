@@ -751,6 +751,8 @@ class GLWindowSink:
             self.toast(self.KEYS_HINT, 3.0 if self.hotkeys is None else 6.0)
 
     def _name(self, mode: str) -> str:
+        if mode == "vsr" and getattr(self.vsr, "label", None):  # KVLR: "DLSS SR" when that engine is chosen
+            return self.vsr.label
         if mode == "vsr":
             return f"RTX VSR q{self.vsr.quality if self.vsr is not None else self.settings.vsr_quality}"
         return self.NAMES[mode]
@@ -762,10 +764,10 @@ class GLWindowSink:
             return True
         if self._vsr_args is None:
             return False
-        from .rtxvsr import make_vsr
+        from .kvlr_dlss import make_upscaler  # KVLR: RTX VSR or DLSS SR by "ai_upscaler" (framegen/kvlr_dlss.py)
         w, h, clean = self._vsr_args
         try:
-            self.vsr = make_vsr(w, h, self.settings.vsr_quality, clean=clean)
+            self.vsr = make_upscaler(self.settings, w, h, self.settings.vsr_quality, clean=clean)
         except Exception as e:  # noqa: BLE001 - VSR is optional
             self.vsr_why, self._vsr_args = str(e)[:200], None
             if "vsr" in self.modes:

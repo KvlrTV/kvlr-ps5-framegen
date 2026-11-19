@@ -373,7 +373,11 @@ def open_options(mode: Mode, fps: float = 60.0, queue_frames: int = 4) -> dict:
     """av.open options for a mode. rtbufsize caps DirectShow's own queue at a few frames: it only fills when we fall
     behind, and frames dropped there are counted by FFmpeg ("real-time buffer too full")."""
     rate = min(fps, mode.fps_max) if mode.fps_max >= fps - 0.5 else mode.fps_max
-    opts = {"video_size": f"{mode.w}x{mode.h}", "framerate": f"{rate:g}",
+    # KVLR: NTSC rates as 59.94 / 29.97 (an Elgato Cam Link 4K reports 59.9402 and then refuses "59.9402" with "Could
+    # not set video options"); others as before
+    ntsc = round(rate * 1.001)
+    frate = f"{ntsc * 1000 / 1001:.2f}" if ntsc and abs(rate - ntsc * 1000 / 1001) < 0.002 else f"{rate:g}"
+    opts = {"video_size": f"{mode.w}x{mode.h}", "framerate": frate,
             "rtbufsize": str(int(mode.w * mode.h * BYTES_PER_PIXEL.get(mode.fmt, 3) * queue_frames))}
     opts["pixel_format" if mode.raw else "vcodec"] = mode.fmt
     return opts

@@ -73,10 +73,48 @@ low/medium, 1440p otherwise; the window and OBS output upscale back. `kvlr/bench
 (results stay local, in `installer/build/`, because NVIDIA's VFG licence forbids publishing them). The console must send
 SDR (10-bit HDR isn't read). An Elgato Cam Link 4K takes 4K at up to 30 fps only (1080p at 60).
 
+**30 fps capture modes** (`Every60` in `framegen/kvlr_capture.py`, applied by the same `wrap()` hook): a card that
+sends about 30 fps (a UGREEN 25773 at 1440p, its largest size) is put on a 60 Hz beat, each frame handed on once more
+half a frame after it arrived, so the pipeline sees a 30 fps game on a 60 Hz signal and generates frames. Without it
+every frame was new, the pipeline took the game to be at 60 fps and made no AI frames. Measured 2026-11-19 on
+KvlrPC-NEW, GTA VI over a UGREEN 25773, about 38 s each, dropped capture frames: 1080p60 at 120 fps 39-40;
+1440p30 at 120 fps 19 with VFG medium but 248 with VFG high (too slow); 1440p30 at 60 fps (works at 1440p) 18.
+
 **One taskbar button** (`installer/launcher/KvlrTaskbar.cs`, hook in `Ui.cs` `Wire`): the launcher, the pipeline's
 video window and the chiaki-ng it started get the same `System.AppUserModel.ID` (`KvlrTV.KvlrPS5FrameGen`) plus the
 relaunch name and KVLR icon, set through each window's property store every 2 s, so Windows groups them under one
 button. The video window's own icons (`framegen/assets/icon_*.png`) are swapped for the KVLR icon by the branding.
+
+**NVIDIA DLSS (0.4.0)** (`kvlr/ngx/kvlr_ngx.cpp`, our own code; `framegen/kvlr_dlss.py`, `framegen/kvlr_dlssg.py`). A native
+helper, `kvlr_ngx.dll` (Direct3D 12 + NVIDIA NGX), takes frames from the CUDA pipeline through buffers shared between
+Direct3D 12 and CUDA, and measures motion with NVIDIA Optical Flow (the hardware engine, on CUDA; pixels from each frame
+back to the one before, DLSS's convention, checked against a known 16 px shift).
+- **DLSS SR**: Picture → Upscaler RTX VSR → AI upscaler "NVIDIA DLSS SR" (settings `ai_upscaler`, `dlss_preset`,
+  `dlss_motion`; switches live). The window's RTX VSR slot holds a `KvlrUpscaler` that picks RTX VSR or DLSS per frame;
+  both write packed RGB10A2. Hooks in `framegen/io.py` `_vsr_ready` and `_name`.
+- **DLSS Frame Generation**: a third AI engine, `model = "dlssg"` ("NVIDIA DLSS FG"), next to RIFE and NVIDIA VFG, with
+  VFG's interface; 1, 2 or 3 generated frames per real pair for 60 / 90 / 120 fps (multi-frame on RTX 50), the requested
+  fraction taken to the nearest; Steady HUD as with VFG; falls back to RIFE if it can't start. Constant depth and identity
+  camera matrices (captured video has no game data). Hooks marked `KVLR:` in `framegen/settings.py` (the choice) and
+  `run.py` (session_config, build, fallback, labels), plus `autodetect.py`, `kvlr_capture.py`, the launcher's Play chip.
+  On a 16 px pan its frames match the true in-between positions at 68.5 dB (a blend: 27-29 dB), at 2x and 4x.
+- **NVIDIA's files stay out of this repo** (NVIDIA RTX SDKs licence): the DLSS SDK is cloned to
+  `..\kvlr-ps5-framegen-inputs\dlss-sdk` (NVIDIA/DLSS, sparse: include, lib/Windows_x86_64/rel and x64, doc,
+  LICENSE.txt) and the Optical Flow SDK headers (BSD) to `..\kvlr-ps5-framegen-inputs\nvof`. `kvlr/ngx/build_ngx.py`
+  builds the DLL with MSVC (no CUDA toolkit: `kvlr/ngx/cuda_stub/cuda.h`); `kvlr/build_kvlr.py` stages it, NVIDIA's
+  `nvngx_dlss.dll` / `nvngx_dlssg.dll` (object form, as the licence allows) and the licence text into `<app>/ngx`.
+  Without the SDK the build goes on without DLSS. Checks: `kvlr/ngx/test_sr.py`, `test_dlss_cuda.py`, `test_dlssg.py`.
+
+**Settings page layout (0.4.0)** (`installer/launcher/KvlrSettingsLayout.cs`, hooks in `SettingsPage.cs` BuildSettings
+and the end of RefreshSettings; approved mockup `kvlr/design/settings-layout-mockup.png`): tabs Quality / Frame Gen /
+Colour / Stream / Display filter the cards, a processing-order strip shows what runs on each frame, and the Frame
+generation, Look and OBS output cards get an on/off switch. Not done yet: the mockup's live stats panels.
+
+**Play page capture row** (`installer/launcher/KvlrCaptureRow.cs`, hook in `Ui.cs` BuildDevices): Capture size, AI frames
+size and Output (30 = frame generation off, 60/90/120, live) under the capture card's Card / Sound row.
+
+**Versions**: from 0.4.0 the KVLR edition has its own numbers (`python kvlr/build_kvlr.py --version 0.4.0`), still built
+on upstream SmoovPlay (0.3.9 at 0.4.0).
 
 OBS output: Settings → OBS output → On. In OBS, install the Spout2 plugin for OBS, add a **Spout2 Capture** source and
 pick **KVLR PS5**. Fullscreen on a 4K monitor with a 4K feed, OBS gets exactly what's on screen (look included);

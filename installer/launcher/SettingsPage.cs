@@ -291,6 +291,7 @@ namespace SmoovPlay
                     settingSections.Add(BuildSection(group.Key, group.ToList()));
             }
             LayoutSections(true);
+            KvlrSettingsLayout();  // KVLR: tabs, processing order and card switches (KvlrSettingsLayout.cs)
             RefreshSettings();
             if (page == "PageSettings") SnapLater("settings-built", 600);
         }
@@ -773,6 +774,7 @@ namespace SmoovPlay
             Show(E("SetRestart"), showRestart);
             UpdateDetect();
             RenderVfg();
+            KvlrRefresh();  // KVLR: tabs, the processing-order strip and card switches (KvlrSettingsLayout.cs)
         }
 
         /// <summary>The line above each row: only between rows that are showing.</summary>

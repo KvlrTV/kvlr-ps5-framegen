@@ -76,6 +76,22 @@ def kvlr_specs(Spec, on_off: dict) -> tuple:
                     "1440": "Between the two", "1080": "Lightest: best for 90/120"},
              impact={"speed": "RIFE at 4K takes about 15 ms per AI frame on an RTX 5070 Ti, too slow for 90 "
                               "or 120 fps."}),
+        Spec("ai_upscaler", "AI upscaler", ("vsr", "dlss"), "vsr", {"vsr": "NVIDIA RTX VSR", "dlss": "NVIDIA DLSS SR"},
+             group="Picture", applies=("scaler", ("vsr",)),
+             help="The engine behind the AI upscaler (Upscaler: RTX VSR). RTX VSR is made for video. DLSS SR is the "
+                  "game upscaler: sharper detail that builds up over a few frames; on captured video it has no motion "
+                  "data yet, so fast motion can smear a little. Switches at once while playing.",
+             hints={"vsr": "Made for video: steady, clean", "dlss": "Game upscaler: sharper, builds detail over frames"}),
+        Spec("dlss_preset", "DLSS model", ("auto", "k", "l", "m"), "auto",
+             {"auto": "Auto", "k": "K (quality)", "l": "L (low input sizes)", "m": "M (DLSS 4.5)"}, live=False,
+             group="Picture", applies=("ai_upscaler", ("dlss",)),
+             help="Which DLSS model upscales. Auto lets the driver pick for the size. Applies from the next Play."),
+        Spec("dlss_motion", "DLSS motion", ("flow", "zero"), "flow", {"flow": "Optical flow", "zero": "None (still)"},
+             live=False, group="Picture", applies=("ai_upscaler", ("dlss",)),
+             help="How DLSS learns what moved between frames. Optical flow measures it with the graphics card's "
+                  "flow hardware, so moving things stay sharp; None treats the picture as still, which can smear "
+                  "fast motion. Applies from the next Play.",
+             hints={"flow": "Moving things stay sharp", "zero": "Lightest; fast motion can smear"}),
         Spec("obs_output", "OBS output", (False, True), False, on_off, group="OBS output",
              help="Sends a clean copy of the picture to OBS through Spout: no menu, stats or notes on it. In OBS, "
                   f"add a Spout2 Capture source and pick \"{OBS_SENDER}\" (needs the Spout2 plugin for OBS). "

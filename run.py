@@ -284,7 +284,7 @@ def main() -> int:
     ap.add_argument("--max-ticks", type=int)
     ap.add_argument("--hitch", type=float, default=0.0, help="[sim] probability a game frame is held 3 ticks")
     ap.add_argument("--noise", type=float, default=0.0, help="[sim] gaussian noise sigma added per tick")
-    ap.add_argument("--model", default=None, choices=list(MODELS) + ["vfg"],
+    ap.add_argument("--model", default=None, choices=list(MODELS) + ["vfg", "dlssg"],  # KVLR: dlssg
                     help="RIFE version, or vfg for NVIDIA VFG (default: the saved setting, 4.22.lite). The other "
                          "RIFE versions are for testing")
     ap.add_argument("--vfg-quality", default=None, choices=list(BY_KEY["vfg_quality"].choices),
@@ -475,6 +475,8 @@ def main() -> int:
         """What a session is built from; a restart is needed when this changes (keys: settings.SPECS)."""
         if (test_model or settings.model) == "vfg" and not dml_mode:
             return {"model": "vfg", "vfg_quality": settings.vfg_quality}
+        if (test_model or settings.model) == "dlssg" and not dml_mode:  # KVLR: DLSS FG (framegen/kvlr_dlssg.py)
+            return {"model": "dlssg"}
         if a.scale is not None:
             scale = a.scale
         else:  # Auto. On an RTX 4070 Ti SUPER (scripts/benchmark.py), per 30 fps game frame (33 ms): 120 Hz at 1080p
@@ -489,7 +491,8 @@ def main() -> int:
         elif not has_trt:
             engine = "torch"
         model = test_model or settings.model
-        return {"engine": engine, "motion": scale, "model": BY_KEY["model"].default if model == "vfg" else model}
+        return {"engine": engine, "motion": scale,
+                "model": BY_KEY["model"].default if model in ("vfg", "dlssg") else model}  # KVLR: dlssg
 
     started: dict = {}
 
@@ -500,6 +503,9 @@ def main() -> int:
         return [BY_KEY[k].label for k, v in cfg_.items() if v != started.get(k)]
 
     def build(cfg: dict):
+        if cfg["model"] == "dlssg":  # KVLR: NVIDIA DLSS Frame Generation (framegen/kvlr_dlssg.py)
+            from framegen.kvlr_dlssg import DlssFgInterpolator
+            return DlssFgInterpolator(src.w, src.h, settings)
         if cfg["model"] == "vfg":
             from framegen.vfg import VfgInterpolator
             return VfgInterpolator(src.w, src.h, cfg["vfg_quality"], hdr=hdr10[0])
@@ -513,11 +519,13 @@ def main() -> int:
         """build(cfg); if NVIDIA VFG fails to start (e.g. a broken install or driver), RIFE instead, so play goes on.
         Returns (cfg, interpolator)."""
         try:
-            return cfg, busy(lambda: build(cfg), "Starting NVIDIA VFG" if cfg["model"] == "vfg" else None)
+            return cfg, busy(lambda: build(cfg), {"vfg": "Starting NVIDIA VFG",  # KVLR: and DLSS FG
+                                                  "dlssg": "Starting NVIDIA DLSS FG"}.get(cfg["model"]))
         except Exception as e:  # noqa: BLE001
-            if cfg["model"] != "vfg":
+            if cfg["model"] not in ("vfg", "dlssg"):  # KVLR: DLSS FG falls back to RIFE as VFG does
                 raise
-            vfg_why[0] = f"NVIDIA VFG couldn't start: {str(e)[:200]}"
+            name = "NVIDIA DLSS FG" if cfg["model"] == "dlssg" else "NVIDIA VFG"
+            vfg_why[0] = f"{name} couldn't start: {str(e)[:200]}"
             print(f"[run] {vfg_why[0]}; using {BY_KEY['model'].name(rife)}")
             settings.override("model", rife)
             model_rows()
@@ -525,6 +533,8 @@ def main() -> int:
             return cfg, busy(lambda: build(cfg), f"Starting {BY_KEY['model'].name(rife)}")
 
     def describe(cfg: dict) -> str:
+        if cfg["model"] == "dlssg":  # KVLR
+            return "NVIDIA DLSS FG"
         if cfg["model"] == "vfg":
             return f"NVIDIA VFG quality={cfg['vfg_quality']}"
         if cfg["engine"] == "dml":
@@ -534,6 +544,8 @@ def main() -> int:
 
     def label_of(cfg: dict) -> str:  # the overlay's first words
         hdr_tag = {"sdr8": "  HDR in SDR", "pq16": "  HDR10"}.get(hdr_out, "")
+        if cfg["model"] == "dlssg":  # KVLR
+            return f"DLSS FG{hdr_tag}"
         if cfg["model"] == "vfg":
             return f"VFG {cfg['vfg_quality']}{hdr_tag}"
         engine = {"trt": " TRT", "dml": " DML"}.get(cfg["engine"], "")
@@ -548,9 +560,9 @@ def main() -> int:
             return
         rows.clear()
         rows.update(unavailable)
-        if (test_model or settings.model) == "vfg":
+        if (test_model or settings.model) in ("vfg", "dlssg"):  # KVLR: dlssg
             for k in ("engine", "motion"):
-                rows.setdefault(k, "Not used with NVIDIA VFG.")
+                rows.setdefault(k, "Not used with NVIDIA VFG or DLSS FG.")
         else:
             rows.setdefault("vfg_quality", vfg_why[0] or "Only used with NVIDIA VFG.")
         if hasattr(window, "choices"):

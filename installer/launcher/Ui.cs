@@ -1416,6 +1416,7 @@ namespace SmoovPlay
             host.Children.Add(Labelled("Card", card));
             host.Children.Add(Labelled("Sound", sound));
             host.Children.Add(LookAgain());
+            KvlrCaptureOptions(host);  // KVLR: capture size, AI frame size and output rate on the Play page (KvlrCaptureRow.cs)
         }
 
         void BuildWindows(WrapPanel host)
@@ -1647,7 +1648,8 @@ namespace SmoovPlay
             bool on = interp != "false";
             Chip(chips, "\uEC4A", on ? hz + " fps" : "Frame generation off");
             Chip(chips, "\uE7B3", scaler == "vsr" ? "NVIDIA RTX VSR" : scaler == "bilinear" ? "Bilinear" : "AMD FSR 1");
-            Chip(chips, "\uE950", vfg ? "NVIDIA VFG" : engine == "trt" ? "TensorRT" : engine == "torch" ? "PyTorch" : "Engine: auto");
+            Chip(chips, "\uE950", SettingText("model") == "dlssg" ? "NVIDIA DLSS FG"  // KVLR: DLSS FG (framegen/kvlr_dlssg.py)
+                                 : vfg ? "NVIDIA VFG" : engine == "trt" ? "TensorRT" : engine == "torch" ? "PyTorch" : "Engine: auto");
             chips.ToolTip = "Change these on the Settings page, or press M in the video window.";
             KvlrPs5Chip(chips);  // KVLR: the PS5 one-click connect uses, with its state (KvlrUi.cs)
         }

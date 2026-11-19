@@ -16,6 +16,7 @@ signed with it.
 """
 import importlib.util
 import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -55,6 +56,26 @@ def kvlr_args(argv, upstream_version):
     return out
 
 
+def stage_ngx(stage: Path) -> None:
+    """KVLR DLSS (framegen/kvlr_dlss.py): kvlr_ngx.dll, built from kvlr/ngx against NVIDIA's DLSS SDK (kept outside the
+    repo), plus NVIDIA's DLSS runtime DLLs in object form and their licence, into <app>/ngx. Skipped with a note when
+    the SDK isn't on this PC (the app then offers RTX VSR only)."""
+    import subprocess
+    here = Path(__file__).resolve().parent
+    sdk = here.parent.parent / "kvlr-ps5-framegen-inputs" / "dlss-sdk"
+    if not (sdk / "include" / "nvsdk_ngx.h").exists():
+        print(f"[kvlr] DLSS SDK not found in {sdk}: building without DLSS")
+        return
+    if subprocess.run([sys.executable, str(here / "ngx" / "build_ngx.py"), "--sdk", str(sdk)]).returncode:
+        sys.exit("[kvlr] building kvlr_ngx.dll failed")
+    built, dest = here.parent / "installer" / "build" / "ngx", stage / "app" / "ngx"
+    dest.mkdir(parents=True, exist_ok=True)
+    for name in ("kvlr_ngx.dll", "nvngx_dlss.dll", "nvngx_dlssg.dll"):
+        shutil.copy2(built / name, dest / name)
+    shutil.copy2(sdk / "LICENSE.txt", dest / "NVIDIA-RTX-SDKs-LICENSE.txt")
+    print(f"[kvlr] DLSS staged in {dest}")
+
+
 def apply_branding(build):
     """KVLR name, colours, logo and icon (kvlr/branding.py), on copies: upstream's files stay untouched."""
     sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -76,6 +97,7 @@ def apply_branding(build):
     def branded_stage(stage, *a, **kw):
         stage_payload(stage, *a, **kw)
         print(f"[kvlr] branded {branding.brand_app(stage)} app files")
+        stage_ngx(stage)
 
     build.compile_exe, build.stage_payload = branded_compile, branded_stage
     print(f"[kvlr] branding: {branding.NAME}, launcher copies in {root}")

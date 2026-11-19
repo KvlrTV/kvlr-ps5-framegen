@@ -120,12 +120,15 @@ SPECS: tuple[Spec, ...] = (
     # testing with run.py --model; one becomes a choice here once it's tested in real time and setup prepares it.
     # NVIDIA VFG (framegen/vfg.py): offered once the user has set it up on the launcher's Settings page. Its licence
     # forbids publishing benchmark results, so nothing here compares its speed or quality with RIFE's.
-    Spec("model", "Interpolation model", ("4.22.lite", "vfg"), "4.22.lite",
-         {"4.22.lite": "RIFE 4.22 lite", "vfg": "NVIDIA VFG"}, live=False,
+    # KVLR: "dlssg", NVIDIA DLSS Frame Generation (framegen/kvlr_dlssg.py)
+    Spec("model", "Interpolation model", ("4.22.lite", "vfg", "dlssg"), "4.22.lite",
+         {"4.22.lite": "RIFE 4.22 lite", "vfg": "NVIDIA VFG", "dlssg": "NVIDIA DLSS FG"}, live=False,
          group="Smoothness", quick=True, later="Support for other interpolation models may come in a later version.",
          hints={"4.22.lite": "Fast and tested. The default.",
                 "vfg": "NVIDIA's own frame generation, for RTX 40 and 50 series cards. A separate download "
-                       "from NVIDIA."},
+                       "from NVIDIA.",
+                "dlssg": "NVIDIA DLSS Frame Generation with optical-flow motion. RTX 40/50; up to 4x (120 fps) on "
+                         "RTX 50."},
          help="The AI model that draws the in-between frames. RIFE 4.22 lite is the one SmoovPlay is tuned and "
               "tested with, fast enough for 90 and 120 fps. NVIDIA VFG (Video Frame Generation) is NVIDIA's own, "
               "for RTX 40 and 50 series cards: SmoovPlay's Settings page downloads it from NVIDIA once you accept "
@@ -142,7 +145,7 @@ SPECS: tuple[Spec, ...] = (
     # judged by eye (scripts/steady_hud_compare.py), RIFE alone looked as good.
     # framegen/steady.py, after RIFE or NVIDIA VFG alike (with VFG, each in-between frame is also converted to apply it).
     Spec("steady_hud", "Steady HUD", (False, True), False, ON_OFF, group="Smoothness",
-         applies=("model", ("4.22.lite", "vfg")),
+         applies=("model", ("4.22.lite", "vfg", "dlssg")),  # KVLR: dlssg too
          help="Keeps the parts of the picture that don't move, like the map, health bar and subtitles, exactly as "
               "the game drew them, so they don't wobble when the scene behind them moves. Results vary by game, and "
               "often there's no visible difference. If a small, fast object ever flickers, turn it off.",

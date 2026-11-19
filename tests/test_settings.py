@@ -301,7 +301,7 @@ def test_impact_lines_are_plain_short_and_never_about_vfg():
 
 def test_model_choices_are_real_models():
     from framegen.interpolator import MODELS
-    assert set(BY_KEY["model"].choices) - {"vfg"} <= set(MODELS)  # vfg: NVIDIA VFG, framegen/vfg.py
+    assert set(BY_KEY["model"].choices) - {"vfg", "dlssg"} <= set(MODELS)  # vfg: NVIDIA VFG; KVLR: dlssg, DLSS FG
 
 
 def _remote(tmp_path, commands, allowed=lambda k, v: True, disabled=lambda k: None, reasons=lambda: []):

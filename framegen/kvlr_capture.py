@@ -35,7 +35,7 @@ def work_size(settings, w: int, h: int) -> tuple[int, int]:
             return w, h  # no AI frames: nothing to keep up with
         if hz > 60:
             cap = SIZES["1080"]  # 90 and 120 fps: measured, 1080p is the only work size that comes close today
-        elif model == "vfg" and quality in ("low", "medium"):
+        elif (model == "vfg" and quality in ("low", "medium")) or model == "dlssg":
             return w, h
         else:
             cap = SIZES["1440"]
@@ -74,9 +74,60 @@ class WorkSize:
         return cv2.resize(frame, (self.w, self.h), interpolation=cv2.INTER_AREA)
 
 
+class Every60:
+    """Puts a capture card running at about 30 fps (e.g. a UGREEN 25773 at 1440p, whose largest size goes to 30 fps)
+    on the 60 Hz beat the pipeline expects of a card: each frame is handed on as it comes and once more half a frame
+    later, as a repeat. The pipeline then sees what a 60 Hz HDMI signal carrying a 30 fps game looks like (A A B B),
+    finds the game's frames by their repeats as usual, and generates frames between them. Without this, every frame
+    of a 30 fps capture is new, the pipeline takes the game to run at 60 fps and makes no AI frames at all.
+
+    The repeat is timed from the frame's own arrival (not a separate clock, as sources.Clock60 does for windows), so
+    it can't drift against the card: every frame is followed by exactly one repeat, never zero or two. If the pipeline
+    is running late the repeat goes at once; if the next frame is already waiting, it still goes first (it is only a
+    repeat, so it costs no AI work)."""
+
+    def __init__(self, src, hz: float = 60.0, clock=None, sleep=None) -> None:
+        import time
+        from dataclasses import replace
+        self._src, self.fps, self.repeats = src, hz, 0
+        self._clock, self._sleep = clock or time.perf_counter, sleep or time.sleep
+        self._half = 1.0 / hz
+        self.info = replace(src.info, hz=hz)
+        print(f"[capture] the card sends {src.fps:g} fps: each frame is shown twice, as on a {hz:g} Hz signal, so "
+              f"frame generation fills the gaps")
+
+    def __getattr__(self, name):
+        return getattr(self._src, name)
+
+    def __iter__(self):
+        from .io import Tick, Waiting
+        clock, sleep = self._clock, self._sleep
+        index = 0
+        for tick in self._src:
+            if isinstance(tick, Waiting):
+                yield tick
+                continue
+            tick.index = index
+            yield tick
+            index += 1
+            due = tick.t_arrival + self._half
+            if (wait := due - clock()) > 0:
+                sleep(wait)
+            handed = clock()
+            yield Tick(tick.frame, handed, index, tick.content, None, new_hint=False, t_ready=handed,
+                       t_source=None if tick.t_source is None else tick.t_source + self._half)
+            index += 1
+            self.repeats += 1
+
+
 def wrap(src, settings, kind: str):
-    """The capture source at its work size (unchanged for other sources, or when it's already small enough)."""
+    """The capture source at its work size (unchanged for other sources, or when it's already small enough), on a
+    60 Hz beat when the card sends about 30 fps (Every60)."""
     if kind != "capture":
         return src
     w, h = work_size(settings, src.w, src.h)
-    return src if (w, h) == (src.w, src.h) else WorkSize(src, w, h)
+    if (w, h) != (src.w, src.h):
+        src = WorkSize(src, w, h)
+    if 20 <= float(getattr(src, "fps", 60.0)) <= 31:
+        src = Every60(src)
+    return src
