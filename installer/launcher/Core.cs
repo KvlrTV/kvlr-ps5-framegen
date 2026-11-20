@@ -236,7 +236,7 @@ namespace SmoovPlay
 
     // ------------------------------------------------------------------------------------------------ install
     /// <summary>The install steps. Each can run again: Retry or Repair picks up where a run stopped.</summary>
-    class Installer
+    partial class Installer  // KVLR: partial, for KvlrSetup.cs
     {
         public static readonly string[] StepNames =
             { "Unpack SmoovPlay", "Download Python", "Download PyTorch and TensorRT", "Optimise for your graphics card", "Finish up" };
@@ -292,10 +292,12 @@ namespace SmoovPlay
             if (extract) ExtractPayload(at, WExtract);
             at += WExtract;
             StepStarted(1);
+            KvlrVcRuntime(at);  // KVLR: the bundled Visual C++ runtime, if missing (KvlrSetup.cs)
             InstallPython(at, WPython); at += WPython;
             InstallPip(at, WPip); at += WPip;
             StepStarted(2);
             InstallPackages(at, WPackages); at += WPackages;
+            KvlrVfgInstall(at, 0);  // KVLR: NVIDIA VFG, if ticked in setup (KvlrSetup.cs)
             StepStarted(3);
             if (prepare) Prepare(at, WPrepare);
             StepStarted(4);

@@ -86,6 +86,32 @@ def stage_ngx(stage: Path) -> None:
     print(f"[kvlr] DLSS staged in {dest}")
 
 
+VC_REDIST_URL = "https://aka.ms/vs/17/release/vc_redist.x64.exe"
+
+
+def stage_vc_redist(stage: Path) -> None:
+    """Microsoft's Visual C++ 2015-2022 redistributable (x64), into <app>/redist, so setup installs it itself
+    (installer/launcher/KvlrSetup.cs) instead of asking the player to fetch it. Microsoft lets it be shipped with an
+    app. Cached in the inputs folder (delete redist\vc_redist.x64.exe there for a newer one). Its Authenticode signature must be valid and
+    Microsoft's, here and again on the player's PC before it runs."""
+    import subprocess
+    import urllib.request
+    cached = INPUTS / "redist" / "vc_redist.x64.exe"
+    if not cached.exists():
+        cached.parent.mkdir(parents=True, exist_ok=True)
+        print(f"[kvlr] downloading {VC_REDIST_URL}")
+        urllib.request.urlretrieve(VC_REDIST_URL, cached)
+    sig = subprocess.run(["powershell", "-NoProfile", "-Command",
+                          f"$s = Get-AuthenticodeSignature -LiteralPath '{cached}'; \"$($s.Status)|$($s.SignerCertificate.Subject)\""],
+                         capture_output=True, text=True).stdout.strip()
+    if not sig.startswith("Valid|") or "O=Microsoft Corporation" not in sig:
+        sys.exit(f"[kvlr] {cached} isn't validly signed by Microsoft ({sig}); delete it and build again")
+    dest = stage / "app" / "redist"
+    dest.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(cached, dest / cached.name)
+    print(f"[kvlr] Visual C++ runtime staged ({cached.stat().st_size // 1_000_000} MB)")
+
+
 def apply_branding(build):
     """KVLR name, colours, logo and icon (kvlr/branding.py), on copies: upstream's files stay untouched."""
     sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -108,6 +134,7 @@ def apply_branding(build):
         stage_payload(stage, *a, **kw)
         print(f"[kvlr] branded {branding.brand_app(stage)} app files")
         stage_ngx(stage)
+        stage_vc_redist(stage)
 
     build.compile_exe, build.stage_payload = branded_compile, branded_stage
     print(f"[kvlr] branding: {branding.NAME}, launcher copies in {root}")

@@ -191,3 +191,18 @@ KVLR_DEFAULTS = {
     "dlssg_depth": "estimated", "dlssg_lite": True, "obs_stats": True,
 }
 
+
+
+def kvlr_defaults() -> dict:
+    """KVLR_DEFAULTS for this PC. NVIDIA VFG is an opt-in download (NVIDIA's licence, accepted in setup or on the
+    Settings page), so on a PC without it the stock model stays the default instead of a model that isn't there."""
+    d = dict(KVLR_DEFAULTS)
+    try:
+        from .vfg_setup import installed  # cheap: finds the package without importing it (no torch, no NVIDIA DLLs)
+        vfg = installed()
+    except Exception:  # noqa: BLE001 - never stop settings from loading
+        vfg = False
+    if not vfg:
+        d.pop("model", None)
+        d.pop("vfg_quality", None)
+    return d

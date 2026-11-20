@@ -145,6 +145,14 @@ otherwise the feed is FSR-upscaled from the source frame, without the look. Off 
   newest published release signed with our key. Download page for friends: `https://gta.kvlrtv.com`, which links to
   the latest release's `SmoovPlay-Setup.exe`, so it never needs changing when a new release goes out.
 
+**One-wizard install (0.4.13)** (`installer/launcher/KvlrSetup.cs`, hooks in `Core.cs` Installer.Run and `Ui.cs`
+RunChecks / CheckNext / StartInstall; `kvlr/build_kvlr.py` stage_vc_redist): Microsoft's Visual C++ redistributable ships
+in the setup (`app\redist`, Authenticode-checked at build and before it runs) and the install step runs it when it's
+missing, so the PC check shows it as "Comes with KVLR PS5 Frame Gen" instead of a fix to press. The folder page has an
+optional, unticked **NVIDIA VFG** box (RTX 40/50 only; ticking it accepts NVIDIA's licence, linked) that downloads VFG from
+NVIDIA during the install, before the graphics-card step; a failed VFG download never fails setup. NVIDIA's files are
+never bundled. `framegen/kvlr_settings.py kvlr_defaults()`: Kev's `model: vfg` default applies only where VFG is set up.
+
 **Other settings (0.4.12)** (`installer/launcher/KvlrOtherSettings.cs`, hooks in `SettingsPage.cs` and the tab click in
 `KvlrSettingsLayout.cs`): in each Settings card, rows that aren't in use (a switch that's off, a choice at Off / None / 0,
 a setting not used with the picked source, and anything that only applies with one of those) fold under "Other settings

@@ -669,6 +669,7 @@ namespace SmoovPlay
                 {
                     if (c.Id == "gpu" || c.Id == "driver") await gpu;
                     SystemCheck.Run(c, dir, fresh);
+                    KvlrSetupCheck(c, fresh);  // KVLR: the Visual C++ runtime comes with setup (KvlrSetup.cs)
                     // results land one after another, so the page reads top to bottom
                     var due = started + TimeSpan.FromMilliseconds(450 + order * 120);
                     var wait = due - DateTime.UtcNow;
@@ -851,6 +852,7 @@ namespace SmoovPlay
             ShowPage("PageLocation");
             SetStep(1);
             ValidateDir();
+            KvlrSetupVfgOption();  // KVLR: the optional NVIDIA VFG tick box (KvlrSetup.cs)
         }
 
         // ------------------------------------------------------------------------------------------- folder
@@ -1008,6 +1010,7 @@ namespace SmoovPlay
             Window.TaskbarItemInfo.ProgressValue = 0;
 
             var inst = new Installer(paths, fromPayload, fromPayload && !paths.Dev, true, E<CheckBox>("ToggleDesktop").IsChecked == true, redownload);
+            inst.KvlrVfg = fromPayload && setupMode && !updateMode && KvlrVfgPicked;  // KVLR: NVIDIA VFG ticked (KvlrSetup.cs)
             installer = inst;
             Directory.CreateDirectory(paths.Logs);
             var log = new StreamWriter(Path.Combine(paths.Logs, $"setup-{DateTime.Now:yyyyMMdd-HHmmss}.log"), false, Encoding.UTF8) { AutoFlush = true };
