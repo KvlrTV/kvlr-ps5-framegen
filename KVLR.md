@@ -141,5 +141,11 @@ otherwise the feed is FSR-upscaled from the source frame, without the look. Off 
   `kvlr-secret run --scope infra -- python -c "import os,pathlib; p=pathlib.Path.home()/'.kvlr-ps5-framegen'/'update-signing-key.xml'; p.parent.mkdir(exist_ok=True); p.write_text(os.environ['KVLR_FRAMEGEN_UPDATE_SIGNING_KEY'])"`.
 - Release: run `release.yml` from the Actions tab (it drafts the release), upload
   `installer/dist/SmoovPlay-Setup.exe` and its `.sig`, then publish.
-- The repo is private, so the in-app update check needs `SMOOVPLAY_GITHUB_TOKEN` (a read-only token) set on the
-  PC that runs it, or the repo made public.
+- The repo is public, so the in-app update check works on any PC with no token: every installed copy offers the
+  newest published release signed with our key. Download page for friends: `https://gta.kvlrtv.com`, which links to
+  the latest release's `SmoovPlay-Setup.exe`, so it never needs changing when a new release goes out.
+
+**Other settings (0.4.12)** (`installer/launcher/KvlrOtherSettings.cs`, hooks in `SettingsPage.cs` and the tab click in
+`KvlrSettingsLayout.cs`): in each Settings card, rows that aren't in use (a switch that's off, a choice at Off / None / 0,
+a setting not used with the picked source, and anything that only applies with one of those) fold under "Other settings
+(N)". Worked out when the page opens or a tab is picked, so rows don't jump while you use them.

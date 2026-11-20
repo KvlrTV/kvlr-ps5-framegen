@@ -85,6 +85,7 @@ namespace SmoovPlay
             public TextBlock Note;
             public FrameworkElement RestartTag;
             public FrameworkElement Element, Rule;  // the row, and the line above it (both hidden when it doesn't apply)
+            public bool KvlrOther;           // KVLR: under the card's Other settings (KvlrOtherSettings.cs)
         }
 
         class SettingSection
@@ -95,6 +96,11 @@ namespace SmoovPlay
             public TextBlock Summary;
             public RotateTransform Chevron;
             public readonly List<SettingRow> Rows = new List<SettingRow>();
+            // KVLR: the in-use rows, and the folding Other settings (KvlrOtherSettings.cs)
+            public StackPanel KvlrMain, KvlrOther, KvlrOtherFold;
+            public Border KvlrOtherRule;
+            public TextBlock KvlrOtherLabel;
+            public RotateTransform KvlrOtherChevron;
         }
 
         static readonly JavaScriptSerializer Json = new JavaScriptSerializer();
@@ -272,6 +278,7 @@ namespace SmoovPlay
             LoadSettingSpecs(settingSpecsStale);
             if (loadingSpecs) settingSpecsStale = false;
             ShowPage("PageSettings");
+            kvlrSplitDue = true;  // KVLR: work out Other settings again (KvlrOtherSettings.cs)
             RefreshSettings();
         }
 
@@ -292,6 +299,7 @@ namespace SmoovPlay
             }
             LayoutSections(true);
             KvlrSettingsLayout();  // KVLR: tabs, processing order and card switches (KvlrSettingsLayout.cs)
+            kvlrSplitDue = true;  // KVLR: work out Other settings again (KvlrOtherSettings.cs)
             RefreshSettings();
             if (page == "PageSettings") SnapLater("settings-built", 600);
         }
@@ -361,6 +369,7 @@ namespace SmoovPlay
             var body = new StackPanel();
             body.Children.Add(new Border { Height = 1, Background = R("Line") });
             body.Children.Add(rows);
+            KvlrOtherBuild(sec, rows, body);  // KVLR: Other settings (KvlrOtherSettings.cs)
             sec.Body = body;
             Show(body, open);
 
@@ -745,9 +754,9 @@ namespace SmoovPlay
             finally { syncingSettings = false; }
 
             FixRules(quickRows);
+            KvlrOtherRefresh(value);  // KVLR: Other settings, and the lines between rows (KvlrOtherSettings.cs)
             foreach (var sec in settingSections)
             {
-                FixRules(sec.Rows);
                 var shown = sec.Rows.Where(r => r.Element.Visibility == Visibility.Visible).ToList();
                 Show(sec.Card, shown.Count > 0);
                 var changed = shown.Where(r => !Same(value(r.Spec), r.Spec.Default))

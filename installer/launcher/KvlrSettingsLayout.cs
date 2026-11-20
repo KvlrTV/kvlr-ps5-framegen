@@ -59,7 +59,7 @@ namespace SmoovPlay
                 var tab = new Border { BorderThickness = new Thickness(0, 0, 0, 2), Child = label, Background = Brushes.Transparent };
                 string n = name;
                 var press = new Button { Style = S("Bare"), Content = tab, Cursor = System.Windows.Input.Cursors.Hand, Padding = new Thickness(0) };
-                press.Click += (o, e) => { kvlrTab = n; KvlrRememberTab(); RefreshSettings(); };
+                press.Click += (o, e) => { kvlrTab = n; KvlrRememberTab(); kvlrSplitDue = true; RefreshSettings(); };
                 AutomationProperties.SetAutomationId(press, "kvlr-tab-" + name.Replace(" ", ""));
                 AutomationProperties.SetName(press, name + " tab");
                 kvlrTabButtons[name] = tab;
