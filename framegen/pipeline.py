@@ -9,6 +9,8 @@ from dataclasses import dataclass, field
 import numpy as np
 import torch
 
+from .kvlr_pace import pace_for  # KVLR: Steady 60
+from .kvlr_capable import capable_fps, may_show, private_text  # KVLR: capable frame rate on the stats bar
 from . import delaytest
 from .cadence import Action, CadenceScheduler, CutDetector, DipWatch, DuplicateDetector, FrameTimeline, RhythmLock
 from .hdr import level8, to_u8
@@ -438,6 +440,7 @@ class Pipeline:
         # on (then a 30 fps stretch is a cutscene, not the game), and since when it has been at about 30
         test_at_60, at30_since = False, None
         last_new_at = None  # when the last new frame arrived (Stats.new_gaps_ms)
+        pacer = None  # KVLR: Steady 60 (framegen/kvlr_pace.py)
 
         def test_line() -> str:
             """Test mode's badge, and quality over the last ~30 scored frames (about a second). 90 fps draws frames
@@ -467,6 +470,9 @@ class Pipeline:
                 text = f"{label}  INTERP OFF" + (f"  {rates}" if rates else "")
             else:
                 text = f"{label}  INTERP ON  {rates or f'{hz} Hz'}  interp {np.mean(proc) if proc else 0.0:5.1f} ms"
+                cap = capable_fps(st, g) if hz == 60 and may_show(settings) else None  # KVLR: framegen/kvlr_capable.py
+                if cap is not None:
+                    text += f"  capped 60, capable ~{cap:.0f} fps"
                 if hz > 60 and shown + skipped:
                     text += f"  extra frames {100 * shown / (shown + skipped):3.0f}%"
             if delay_test is not None:  # the delay test, while it runs, is the second line
@@ -486,6 +492,12 @@ class Pipeline:
                 parts.append((f"game {g:.0f}", "warn" if note else "dim"))
             if st.real_delay_ms:
                 parts.append((f"delay {np.median(st.real_delay_ms[-120:]):.0f} ms", "dim"))
+            if enabled and hz == 60 and not testing and may_show(settings):  # KVLR: capped at 60, and what it could do (framegen/kvlr_capable.py)
+                cap = capable_fps(st, g)
+                if cap is not None:
+                    parts.append((f"cap 60 | capable ~{cap:.0f}", "dim"))
+            if sink is not None:  # KVLR: off the stream, on this PC's screen only (framegen/kvlr_capable.py)
+                sink.kvlr_capable_text = private_text(st, g, settings, hz, enabled)
             if not enabled:
                 health = "off"
             elif hz > 60 and shown + skipped:
@@ -786,11 +798,15 @@ class Pipeline:
                             if hasattr(sink, "toast"):
                                 sink.toast(advice, 8.0)
                     ov_text, ov_next = overlay_text(), t_ready + 0.25
+                pacer = pace_for(pacer, settings, hz)  # KVLR: Steady 60, an even beat (framegen/kvlr_pace.py)
+                if pacer is not None and sink is not None:
+                    pacer.wait(getattr(tick, "t_arrival", None))
                 cmd = present(out, ov_text) or early_cmd
             t_shown = time.perf_counter()
-            st.busy_ms.append((t_shown - t0) * 1000)
+            held = pacer.last_hold if pacer is not None and sink is not None else 0.0  # KVLR: not work
+            st.busy_ms.append((t_shown - t0 - held) * 1000)
             if sink is not None:
-                st.sink_ms.append((t_shown - t_ready) * 1000)
+                st.sink_ms.append((t_shown - t_ready - held) * 1000)
 
             # Track when each real frame first reaches the screen (timed: when the game time shown reaches it).
             if timed:

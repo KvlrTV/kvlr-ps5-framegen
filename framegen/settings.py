@@ -121,10 +121,14 @@ SPECS: tuple[Spec, ...] = (
     # NVIDIA VFG (framegen/vfg.py): offered once the user has set it up on the launcher's Settings page. Its licence
     # forbids publishing benchmark results, so nothing here compares its speed or quality with RIFE's.
     # KVLR: "dlssg", NVIDIA DLSS Frame Generation (framegen/kvlr_dlssg.py)
-    Spec("model", "Interpolation model", ("4.22.lite", "vfg", "dlssg"), "4.22.lite",
-         {"4.22.lite": "RIFE 4.22 lite", "vfg": "NVIDIA VFG", "dlssg": "NVIDIA DLSS FG"}, live=False,
+    # KVLR: RIFE 4.25 lite and 4.26 too (weights downloaded on first use, interpolator.ensure_weights)
+    Spec("model", "Interpolation model", ("4.22.lite", "4.25.lite", "4.26", "vfg", "dlssg"), "4.22.lite",
+         {"4.22.lite": "RIFE 4.22 lite", "4.25.lite": "RIFE 4.25 lite", "4.26": "RIFE 4.26", "vfg": "NVIDIA VFG",
+          "dlssg": "NVIDIA DLSS FG"}, live=False,
          group="Smoothness", quick=True, later="Support for other interpolation models may come in a later version.",
          hints={"4.22.lite": "Fast and tested. The default.",
+                "4.25.lite": "Newer lite RIFE: cleaner motion, a little heavier. Its first start downloads it.",
+                "4.26": "RIFE's recommended full model: the best RIFE motion, the heaviest. First start downloads it.",
                 "vfg": "NVIDIA's own frame generation, for RTX 40 and 50 series cards. A separate download "
                        "from NVIDIA.",
                 "dlssg": "NVIDIA DLSS Frame Generation with optical-flow motion. RTX 40/50; up to 4x (120 fps) on "
@@ -145,14 +149,14 @@ SPECS: tuple[Spec, ...] = (
     # judged by eye (scripts/steady_hud_compare.py), RIFE alone looked as good.
     # framegen/steady.py, after RIFE or NVIDIA VFG alike (with VFG, each in-between frame is also converted to apply it).
     Spec("steady_hud", "Steady HUD", (False, True), False, ON_OFF, group="Smoothness",
-         applies=("model", ("4.22.lite", "vfg", "dlssg")),  # KVLR: dlssg too
+         applies=("model", ("4.22.lite", "4.25.lite", "4.26", "vfg", "dlssg")),  # KVLR: dlssg, RIFE 4.25 lite / 4.26
          help="Keeps the parts of the picture that don't move, like the map, health bar and subtitles, exactly as "
               "the game drew them, so they don't wobble when the scene behind them moves. Results vary by game, and "
               "often there's no visible difference. If a small, fast object ever flickers, turn it off.",
          impact={"picture": "Steadier HUD in some games; in others, slightly worse elsewhere.",
                  "speed": "About 0.5 ms more work per real frame, and a little more delay."}),
     Spec("engine", "AI engine", ("auto", "trt", "torch"), "auto",
-         {"auto": "Auto", "trt": "TensorRT", "torch": "PyTorch"}, live=False, group="Smoothness", applies=("model", ("4.22.lite",)),
+         {"auto": "Auto", "trt": "TensorRT", "torch": "PyTorch"}, live=False, group="Smoothness", applies=("model", ("4.22.lite", "4.25.lite", "4.26")),  # KVLR: RIFE 4.25 lite / 4.26
          hints={"auto": "The faster one for your settings. Recommended.",
                 "trt": "Fastest at full motion detail. Its first start on a graphics card takes a minute or two.",
                 "torch": "Starts at once. Fastest at half motion detail."},
@@ -162,7 +166,7 @@ SPECS: tuple[Spec, ...] = (
          impact={"picture": "None: both draw the same frames.",
                  "speed": "TensorRT is about 12% faster at full motion detail, PyTorch at half."}),
     Spec("motion", "Motion detail", ("auto", "full", "half"), "auto",
-         {"auto": "Auto", "full": "Full", "half": "Half"}, live=False, group="Smoothness", applies=("model", ("4.22.lite",)),
+         {"auto": "Auto", "full": "Full", "half": "Half"}, live=False, group="Smoothness", applies=("model", ("4.22.lite", "4.25.lite", "4.26")),  # KVLR: RIFE 4.25 lite / 4.26
          hints={"auto": "Full; Half at 120 fps or a 1440p capture at 90; less for 4K. Recommended.", "full": "Sharpest on fast motion. The slowest.",
                 "half": "About 40% faster. A little softer on fast detail."},
          help="How finely RIFE tracks movement. Full follows small, fast details best, like railings or distant "

@@ -10,6 +10,7 @@ OBS_SENDER = "KVLR PS5"  # the name OBS's Spout2 Capture source lists
 # Set once and changed on the launcher's Settings page (live, while playing too), so they stay out of the in-video
 # menu, which has to fit a 1080p picture with room for upstream's next settings (tests/test_settings.py).
 MENU_HIDDEN_GROUPS = {"OBS output", "PS5 connection", "Capture card", "Sound"}
+MENU_HIDDEN_KEYS = {"steady_pace"}  # set once on the launcher (the menu has no room left in Smoothness)
 
 # chiaki-ng's saved settings (Qt QSettings in the registry). The launcher (installer/launcher/KvlrChiaki.cs) writes the
 # "PS5 connection" choices there just before Play starts chiaki-ng.
@@ -84,6 +85,29 @@ def kvlr_specs(Spec, on_off: dict) -> tuple:
                     "1440": "Between the two", "1080": "Lightest: best for 90/120"},
              impact={"speed": "RIFE at 4K takes about 15 ms per AI frame on an RTX 5070 Ti, too slow for 90 "
                               "or 120 fps."}),
+        Spec("steady_pace", "Steady 60", (True, False), True, on_off, group="Smoothness",
+             help="At 60 fps output, every frame reaches the screen (and OBS) on an even beat, 16.7 ms apart. "
+                  "Without it, a slow AI frame (NVIDIA VFG High) goes out late and the next real frame right after "
+                  "it, which looks juddery. The real frames then wait a few ms for their place, so a little more "
+                  "delay. Changes at once.",
+             hints={True: "Even 60 fps on screen and stream", False: "Each frame shown as soon as it's ready"}),
+        Spec("polish", "Polish", tuple(range(0, 201, 10)), 0, {v: f"{v}%" for v in range(0, 201, 10)},
+             group="Looks",
+             help="A finishing pass on the final picture: local contrast, a light sharpen and very fine grain, so an "
+                  "upscaled picture reads crisper. It goes after the look you use, or works on its own. 100% is the "
+                  "KVLR Polish look; 0% is off. Changes at once.",
+             impact={"picture": "Crisper, more detailed-looking picture; fine grain hides banding.",
+                     "speed": "Two small passes at the window's size: well under a millisecond."}),
+        Spec("cleanup", "Clean-up", ("off", "light", "medium", "strong", "max"), "off",
+             {"off": "Off", "light": "Light", "medium": "Medium", "strong": "Strong", "max": "Max"}, live=False,
+             group="Picture",
+             help="Removes compression blocks, ringing and mosquito noise from each real frame before frame "
+                  "generation and upscaling, so they aren't enlarged and sharpened. NVIDIA RTX Video's denoise, "
+                  "from NVIDIA VFG's download (RTX 40 and 50 series). Stronger is cleaner but softens fine texture. "
+                  "Applies from the next Play.",
+             hints={"off": "The frames as they arrive", "light": "Light clean-up, keeps the most texture",
+                    "medium": "Removes most blocks and noise", "strong": "Aggressive: softer texture",
+                    "max": "Strongest: for a very blocky stream"}),
         Spec("dlss_preset", "DLSS model", ("auto", "k", "l", "m"), "auto",
              {"auto": "Auto", "k": "K (quality)", "l": "L (low input sizes)", "m": "M (DLSS 4.5)"}, live=False,
              group="Picture", applies=("scaler", ("dlss",)),
@@ -132,8 +156,13 @@ def kvlr_specs(Spec, on_off: dict) -> tuple:
              help="The size OBS gets. When SmoovPlay's picture is already this size (fullscreen on a 4K monitor) "
                   "OBS gets exactly what you see, look included; otherwise it's upscaled with FSR 1 on its own, "
                   "without the look."),
-        Spec("obs_fps", "OBS output frame rate", (60, 30), 60, {60: "60 fps", 30: "30 fps"}, group="OBS output",
+        Spec("obs_fps", "OBS output frame rate", (0, 60, 30), 0,
+             {0: "Every frame", 60: "60 fps", 30: "30 fps"}, group="OBS output",
              applies=("obs_output", (True,)),
-             help="How often OBS gets a new picture. At 90 or 120 fps output, frames in between are left out "
-                  "for OBS only."),
+             hints={0: "Recommended: OBS always takes the newest frame, so its own clock can't skip or repeat one",
+                    60: "At most 60 a second", 30: "At most 30 a second"},
+             help="How often OBS gets a new picture. Every frame is smoothest: OBS takes the newest picture at its own "
+                  "frame rate, so nothing beats against its clock. A cap leaves frames out for OBS only, timed by "
+                  "this PC's clock, which drifts against OBS's and can show as an occasional skipped or repeated "
+                  "frame on stream."),
     )

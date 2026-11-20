@@ -1341,6 +1341,9 @@ class GLWindowSink:
             self._draw_stats(f"{first}  {label}{nl}{rest}", ux, uy, uw, uh)
         if self.kvlr_obs is not None and obs_stats:  # KVLR: after the stats, still before any menu or message
             self.kvlr_obs.frame(self, target, x0, y0, dw, dh)
+        if self.overlay and isinstance(text, MiniText):  # KVLR: the capable rate kept off the stream (kvlr_capable.py)
+            from .kvlr_capable import draw_private
+            draw_private(self, ux, uy, uw, uh)
         self._draw_ui(ux, uy, uw, uh)
         self._present()
         self.settle()

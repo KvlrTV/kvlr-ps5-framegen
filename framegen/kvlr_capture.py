@@ -123,11 +123,13 @@ class Every60:
 def wrap(src, settings, kind: str):
     """The capture source at its work size (unchanged for other sources, or when it's already small enough), on a
     60 Hz beat when the card sends about 30 fps (Every60)."""
+    from .kvlr_clean import wrap as clean  # Clean-up (framegen/kvlr_clean.py), every source, at the work size
     if kind != "capture":
-        return src
+        return clean(src, settings)
     w, h = work_size(settings, src.w, src.h)
     if (w, h) != (src.w, src.h):
         src = WorkSize(src, w, h)
+    src = clean(src, settings)
     if 20 <= float(getattr(src, "fps", 60.0)) <= 31:
         src = Every60(src)
     return src

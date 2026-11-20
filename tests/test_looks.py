@@ -237,7 +237,8 @@ def test_every_builtin_look_changes_the_picture_and_stays_in_range():
     for key, look in BUILTIN.items():
         out = render(look, img)
         assert out.shape == img.shape and out.dtype == np.uint8
-        assert np.abs(out.astype(int) - img).mean() > 3, key
+        # KVLR: the polish looks (framegen/kvlr_looks.py) are subtle on purpose
+        assert np.abs(out.astype(int) - img).mean() > (1 if key.startswith("kvlr-") else 3), key
 
 
 def test_passes():

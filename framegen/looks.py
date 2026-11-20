@@ -407,6 +407,8 @@ BUILTIN: dict[str, dict] = {
     "assist-deutan": _look("Color assist: deuteranopia", node("assist", kind=1)),
     "assist-tritan": _look("Color assist: tritanopia", node("assist", kind=2)),
 }
+from .kvlr_looks import kvlr_looks  # noqa: E402  KVLR: the polish looks first in the list (framegen/kvlr_looks.py)
+BUILTIN = {**kvlr_looks(_look, node), **BUILTIN}
 DEFAULT_LOOK = "cinematic"
 
 # The "Which look" setting's choices and names (framegen/settings.py): the built-in looks, then the user's, by name.
@@ -995,15 +997,16 @@ class LookState:
         self._unwatch = settings.watch(self._changed)
 
     def _changed(self, key: str) -> None:
-        if key in ("look", "look_on"):
+        if key in ("look", "look_on", "polish"):  # KVLR: the Polish slider (framegen/kvlr_looks.py)
             self.rev += 1
 
     def current(self) -> dict | None:
         if self.preview is not None:
             return self.preview
+        from .kvlr_looks import with_polish  # KVLR: the Polish slider, after the look (or on its own)
         if not self.settings.look_on:
-            return None
-        return self.library.get(self.settings.look) or BUILTIN[DEFAULT_LOOK]
+            return with_polish(None, self.settings)
+        return with_polish(self.library.get(self.settings.look) or BUILTIN[DEFAULT_LOOK], self.settings)
 
     def name(self) -> str:
         look = self.current()

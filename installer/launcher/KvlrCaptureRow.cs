@@ -10,6 +10,7 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
+using System.Windows.Media;
 
 namespace SmoovPlay
 {
@@ -62,6 +63,64 @@ namespace SmoovPlay
             var lab = Labelled("Sound out", drop);
             ((FrameworkElement)lab).Margin = new Thickness(4, 4, 4, 4);
             chips.Children.Add(lab);
+            KvlrPolish(chips);
+        }
+
+        /// <summary>Polish ("polish", 0-200 %, framegen/kvlr_looks.py): a slider that changes the picture at once while
+        /// playing, and Save as look, which keeps what's on now (look + Polish) as one of the user's own looks.</summary>
+        void KvlrPolish(WrapPanel chips)
+        {
+            int now;
+            if (!int.TryParse(KvlrSettingFull("polish") ?? "0", out now)) now = 0;
+            var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(4, 4, 4, 4), VerticalAlignment = VerticalAlignment.Center };
+            row.Children.Add(new TextBlock { Text = "Polish", FontSize = 12.5, Foreground = R("Text2"), Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center });
+            var slider = new Slider
+            {
+                Style = S("Slide"), Minimum = 0, Maximum = 200, Value = now, SmallChange = 10, LargeChange = 50, Width = 180,
+                TickFrequency = 10, IsSnapToTickEnabled = true, IsMoveToPointEnabled = true, VerticalAlignment = VerticalAlignment.Center,
+                ToolTip = "Crisper picture: local contrast, a light sharpen and fine grain, after your look. 100% = KVLR Polish. Changes at once.",
+            };
+            AutomationProperties.SetAutomationId(slider, "kvlr-polish");
+            AutomationProperties.SetName(slider, "Polish");
+            var text = new TextBlock { Text = now + "%", Width = 44, FontSize = 12.5, Foreground = R("Text"), Margin = new Thickness(8, 0, 6, 0),
+                                       FontFamily = (FontFamily)Window.FindResource("Mono"), VerticalAlignment = VerticalAlignment.Center };
+            int last = now;
+            slider.ValueChanged += (o, e) =>
+            {
+                int v = (int)(Math.Round(slider.Value / 10.0) * 10);
+                text.Text = v + "%";
+                if (v == last) return;
+                last = v;
+                KvlrSet("polish", v);
+            };
+            slider.MouseDoubleClick += (o, e) => { slider.Value = 0; };
+            var save = new Button { Style = S("Ghost"), Content = "Save as look", Margin = new Thickness(4, 0, 0, 0), Padding = new Thickness(12, 4, 12, 4) };
+            AutomationProperties.SetAutomationId(save, "kvlr-polish-save");
+            save.ToolTip = "Saves what you see now (your look, if one is on, plus Polish) as your own look, to pick again later on the Looks page or with J.";
+            save.Click += (o, e) =>
+            {
+                save.IsEnabled = false;
+                System.Threading.Tasks.Task.Run(() =>
+                {
+                    var lines = new List<string>();
+                    try { Proc.Run(Proc.Python(paths.Python, "-m framegen.kvlr_looks save-polish", paths.App), l => { lock (lines) lines.Add(l); }, null); }
+                    catch (Exception ex) { lock (lines) lines.Add("{\"error\": \"" + ex.Message.Replace("\"", "'") + "\"}"); }
+                    string json;
+                    lock (lines) json = lines.LastOrDefault(l => l.StartsWith("{")) ?? "{\"error\": \"no answer\"}";
+                    Window.Dispatcher.Invoke(() =>
+                    {
+                        save.IsEnabled = true;
+                        Dictionary<string, object> r = null;
+                        try { r = Json.DeserializeObject(json) as Dictionary<string, object>; } catch (Exception) { }
+                        if (r != null && r.ContainsKey("name")) Toast("Saved as \"" + r["name"] + "\" on the Looks page", false);
+                        else Toast(r != null && r.ContainsKey("error") ? Convert.ToString(r["error"]) : "Couldn't save the look", true);
+                    });
+                });
+            };
+            row.Children.Add(slider);
+            row.Children.Add(text);
+            row.Children.Add(save);
+            chips.Children.Add(row);
         }
 
         /// <summary>A setting's whole text value: SettingText's file fallback (Prefs.Setting) stops at the first space,

@@ -44,8 +44,8 @@ class Menu:
                  disabled: Callable[[str], str | None] | None = None,
                  restart_reasons: Callable[[], list[str]] | None = None) -> None:
         self.settings, self.specs = settings, specs
-        from .kvlr_settings import MENU_HIDDEN_GROUPS  # KVLR: launcher-only settings stay out of the in-video menu
-        self.specs = tuple(s for s in self.specs if s.group not in MENU_HIDDEN_GROUPS)
+        from .kvlr_settings import MENU_HIDDEN_GROUPS, MENU_HIDDEN_KEYS  # KVLR: launcher-only settings stay out
+        self.specs = tuple(s for s in self.specs if s.group not in MENU_HIDDEN_GROUPS and s.key not in MENU_HIDDEN_KEYS)
         self.allowed = allowed or (lambda k, v: True)
         self.disabled = disabled or (lambda k: None)
         self.restart_reasons = restart_reasons or (lambda: [])

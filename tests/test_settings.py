@@ -161,9 +161,9 @@ def test_every_setting_is_on_a_page():
         st = Settings(vals)
         m = Menu(st)
         on_pages = {s.key for p in [None] + m.sections() for kind, s in m.page_rows(p) if kind == "setting"}
-        from framegen.kvlr_settings import MENU_HIDDEN_GROUPS  # KVLR: launcher-only settings aren't on menu pages
+        from framegen.kvlr_settings import MENU_HIDDEN_GROUPS, MENU_HIDDEN_KEYS  # KVLR: launcher-only settings
         assert on_pages == {s.key for s in SPECS if s.applies_to(st.values())
-                            and s.group not in MENU_HIDDEN_GROUPS}, vals
+                            and s.group not in MENU_HIDDEN_GROUPS and s.key not in MENU_HIDDEN_KEYS}, vals
 
 
 def test_menu_disabled_row_and_restart_row():
@@ -174,7 +174,8 @@ def test_menu_disabled_row_and_restart_row():
     m.index = _keys(m).index("fsr_sharpness")
     m.key("right")
     assert st.fsr_sharpness == BY_KEY["fsr_sharpness"].default  # greyed out: no change
-    assert _keys(m) == ["scaler", "fsr_sharpness", "hdr", "capture_size"]  # RTX VSR quality: hidden
+    # RTX VSR quality: hidden. KVLR: Clean-up (framegen/kvlr_clean.py) is a Picture setting too
+    assert _keys(m) == ["scaler", "fsr_sharpness", "hdr", "capture_size", "cleanup"]
     pending.append("AI engine")
     assert m.rows()[-1][0] == "restart"
     m.index = len(m.rows()) - 1

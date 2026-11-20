@@ -8,7 +8,9 @@ stats and notes, so the feed never carries them. The picture goes to OBS as a GP
   1:1 copy of it, so OBS shows what the player sees, look and RTX VSR included.
 - Otherwise the source frame is upscaled with an FSR 1 of the feed's own (sharing the window's would re-make its
   buffers every frame, the two sizes differing), without the look.
-- At most obs_fps pictures a second: with 90 or 120 fps output, frames in between are skipped for OBS only.
+- Every frame by default (obs_fps 0): OBS takes the newest picture on its own clock. A cap (60 / 30) skips frames for
+  OBS only, timed by this PC's clock, which drifts against OBS's (an occasional skipped or repeated frame on stream).
+- Once a minute, and at the end, the log says how many pictures OBS got and the longest gap between them.
 - Off with HDR output (the window's frames are then PQ float, which OBS's Spout capture would show wrongly).
 
 In OBS: install the Spout2 plugin for OBS, add a "Spout2 Capture" source and pick the sender "KVLR PS5".
@@ -31,6 +33,9 @@ class ObsFeed:
         self.target = None  # (texture, framebuffer, w, h)
         self.next_due = 0.0
         self.sent = 0
+        self._last_send = None
+        self._win = [time.perf_counter(), 0, 0.0, 0]  # minute window: start, pictures, longest gap (s), late gaps
+        self._all = [0.0, 0]  # session: longest gap (s), late gaps
         self.failed = False  # Spout couldn't start: say so once, then stay off this session
         self.test = os.environ.get("FRAMEGEN_OBS_TEST") == "1"
 
@@ -41,11 +46,13 @@ class ObsFeed:
             if self.sender is not None:
                 self._release()
             return
-        period = 1.0 / float(st.obs_fps)
         now = time.perf_counter()
-        if now < self.next_due - 0.25 * period:
-            return  # a frame in between, for OBS only
-        self.next_due = self.next_due + period if now - self.next_due < period else now + period
+        cap = int(st.obs_fps or 0)
+        if cap > 0:
+            period = 1.0 / float(cap)
+            if now < self.next_due - 0.25 * period:
+                return  # a frame in between, for OBS only
+            self.next_due = self.next_due + period if now - self.next_due < period else now + period
         if self.sender is None and not self._start():
             return
         w, h = OBS_SIZES.get(str(st.obs_size), OBS_SIZES["2160"])
@@ -72,10 +79,32 @@ class ObsFeed:
         GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, target)
         GL.glViewport(int(vp[0]), int(vp[1]), int(vp[2]), int(vp[3]))
         self.sent += 1
+        self._note(time.perf_counter(), st)
         if self.test:
             print(f"[obs] {self.sent}: {how} {w}x{h} send {1000 * (time.perf_counter() - t0):.2f} ms ok={ok}")
         if self.sent == 1:
-            print(f"[obs] OBS output on: Spout sender \"{OBS_SENDER}\", {w}x{h} at up to {st.obs_fps} fps ({how})")
+            print(f"[obs] OBS output on: Spout sender \"{OBS_SENDER}\", {w}x{h}, "
+                  f"{'every frame' if not st.obs_fps else f'at up to {st.obs_fps} fps'} ({how})")
+
+    def _note(self, now: float, st) -> None:
+        """Gaps between pictures sent; a gap over 25 ms (more than a 60 fps frame and a half) counts as late."""
+        if self._last_send is not None:
+            gap = now - self._last_send
+            if gap > 1.0:  # a pause (menu, restart): not a stutter
+                gap = 0.0
+            w = self._win
+            w[2] = max(w[2], gap)
+            self._all[0] = max(self._all[0], gap)
+            if gap > 0.025:
+                w[3] += 1
+                self._all[1] += 1
+        self._last_send = now
+        self._win[1] += 1
+        if now - self._win[0] >= 60.0:
+            w = self._win
+            print(f"[obs] last minute: {w[1] / (now - w[0]):.1f} pictures a second to OBS, longest gap "
+                  f"{1000 * w[2]:.0f} ms, gaps over 25 ms: {w[3]}")
+            self._win = [now, 0, 0.0, 0]
 
     # ---- set-up ---------------------------------------------------------------------------------------------
     def _start(self) -> bool:
@@ -127,7 +156,8 @@ class ObsFeed:
         except Exception:  # noqa: BLE001
             pass
         self.sender = None
-        print(f"[obs] OBS output off ({self.sent} pictures sent)")
+        print(f"[obs] OBS output off ({self.sent} pictures sent; longest gap {1000 * self._all[0]:.0f} ms, gaps "
+              f"over 25 ms: {self._all[1]})")
 
     def close(self) -> None:
         if self.sender is not None:
