@@ -365,7 +365,7 @@ SPECS: tuple[Spec, ...] = (
          impact={"speed": "None: only the sound waits, by as long as the picture does."}),
 )
 # KVLR: the KVLR edition's own settings (framegen/kvlr_settings.py)
-from .kvlr_settings import kvlr_specs  # noqa: E402
+from .kvlr_settings import KVLR_DEFAULTS, kvlr_specs  # noqa: E402
 SPECS = SPECS + kvlr_specs(Spec, ON_OFF)
 BY_KEY = {s.key: s for s in SPECS}
 
@@ -389,7 +389,8 @@ class Settings:
             values = json.loads(Path(path).read_text(encoding="utf-8"))
         except (OSError, ValueError):
             values = {}
-        return cls(values if isinstance(values, dict) else {}, path)
+        values = values if isinstance(values, dict) else {}
+        return cls(KVLR_DEFAULTS | values, path)  # KVLR: Kev's settings for anything the file doesn't hold yet
 
     def __getattr__(self, key: str) -> Any:
         try:

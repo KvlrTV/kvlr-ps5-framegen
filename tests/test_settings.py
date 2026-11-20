@@ -341,7 +341,8 @@ def test_remote_refuses_bad_and_unavailable_values(tmp_path, capsys):
     st, r, states = _remote(tmp_path, ["set hz 75", "set nope 1", "set scaler \"vsr\"", "set vsr_quality 4",
                                        "set hz {broken", "bogus"], allowed, disabled)
     r.poll()
-    assert (st.hz, st.scaler, st.vsr_quality) == (60, "fsr", 2)
+    from framegen.kvlr_settings import KVLR_DEFAULTS  # KVLR: a loaded file starts from Kev's defaults
+    assert (st.hz, st.scaler, st.vsr_quality) == (60, "fsr", KVLR_DEFAULTS["vsr_quality"])
     assert not (tmp_path / "settings.json").exists()
     assert len(states()) == 5  # each refused set re-sends the real values
     last = states()[-1]

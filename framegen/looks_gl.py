@@ -131,6 +131,8 @@ vec3 s_sharpen(vec3 c, float amount) {
     return c + amount * (c - 0.25 * nb);
 }
 """
+from .kvlr_refine import GLSL as _KVLR_REFINE  # noqa: E402  KVLR: the Refine effect (framegen/kvlr_refine.py)
+_HEAD += _KVLR_REFINE
 
 _DOWN = """#version 450
 layout(binding = 0) uniform sampler2D src;

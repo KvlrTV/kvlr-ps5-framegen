@@ -66,34 +66,23 @@ namespace SmoovPlay
             KvlrPolish(chips);
         }
 
-        /// <summary>Polish ("polish", 0-200 %, framegen/kvlr_looks.py): a slider that changes the picture at once while
-        /// playing, and Save as look, which keeps what's on now (look + Polish) as one of the user's own looks.</summary>
+        /// <summary>The Polish sliders ("polish_sharpen" ... "polish_grain", 0-100 %, framegen/kvlr_looks.py): one per
+        /// effect, each changing the picture at once while playing, and Save as look, which keeps what's on now
+        /// (look + Polish) as one of the user's own looks. Double-click a slider for 0.</summary>
         void KvlrPolish(WrapPanel chips)
         {
-            int now;
-            if (!int.TryParse(KvlrSettingFull("polish") ?? "0", out now)) now = 0;
-            var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(4, 4, 4, 4), VerticalAlignment = VerticalAlignment.Center };
-            row.Children.Add(new TextBlock { Text = "Polish", FontSize = 12.5, Foreground = R("Text2"), Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center });
-            var slider = new Slider
+            var row = new WrapPanel { Margin = new Thickness(4, 4, 4, 4), VerticalAlignment = VerticalAlignment.Center };
+            row.Children.Add(new TextBlock { Text = "Polish", FontSize = 12.5, FontWeight = FontWeights.SemiBold, Foreground = R("Text2"),
+                                             Margin = new Thickness(0, 0, 10, 0), VerticalAlignment = VerticalAlignment.Center });
+            var parts = new[]
             {
-                Style = S("Slide"), Minimum = 0, Maximum = 200, Value = now, SmallChange = 10, LargeChange = 50, Width = 180,
-                TickFrequency = 10, IsSnapToTickEnabled = true, IsMoveToPointEnabled = true, VerticalAlignment = VerticalAlignment.Center,
-                ToolTip = "Crisper picture: local contrast, a light sharpen and fine grain, after your look. 100% = KVLR Polish. Changes at once.",
+                new[] { "polish_sharpen", "Sharpen", "Sharper across edges and detail, no halos." },
+                new[] { "polish_edges", "Smooth edges", "Fills in stair-steps along edges without blurring across them." },
+                new[] { "polish_noise", "Smooth noise", "Smooths speckle in flat areas; keeps edges and texture." },
+                new[] { "polish_clarity", "Clarity", "Local contrast: texture and depth read stronger." },
+                new[] { "polish_grain", "Grain", "Fine film grain. Off by default." },
             };
-            AutomationProperties.SetAutomationId(slider, "kvlr-polish");
-            AutomationProperties.SetName(slider, "Polish");
-            var text = new TextBlock { Text = now + "%", Width = 44, FontSize = 12.5, Foreground = R("Text"), Margin = new Thickness(8, 0, 6, 0),
-                                       FontFamily = (FontFamily)Window.FindResource("Mono"), VerticalAlignment = VerticalAlignment.Center };
-            int last = now;
-            slider.ValueChanged += (o, e) =>
-            {
-                int v = (int)(Math.Round(slider.Value / 10.0) * 10);
-                text.Text = v + "%";
-                if (v == last) return;
-                last = v;
-                KvlrSet("polish", v);
-            };
-            slider.MouseDoubleClick += (o, e) => { slider.Value = 0; };
+            foreach (var part in parts) row.Children.Add(KvlrPolishSlider(part[0], part[1], part[2]));
             var save = new Button { Style = S("Ghost"), Content = "Save as look", Margin = new Thickness(4, 0, 0, 0), Padding = new Thickness(12, 4, 12, 4) };
             AutomationProperties.SetAutomationId(save, "kvlr-polish-save");
             save.ToolTip = "Saves what you see now (your look, if one is on, plus Polish) as your own look, to pick again later on the Looks page or with J.";
@@ -117,10 +106,39 @@ namespace SmoovPlay
                     });
                 });
             };
-            row.Children.Add(slider);
-            row.Children.Add(text);
             row.Children.Add(save);
             chips.Children.Add(row);
+        }
+
+        FrameworkElement KvlrPolishSlider(string key, string label, string tip)
+        {
+            int now;
+            if (!int.TryParse(KvlrSettingFull(key) ?? "0", out now)) now = 0;
+            var box = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 12, 0), VerticalAlignment = VerticalAlignment.Center };
+            box.Children.Add(new TextBlock { Text = label, FontSize = 12, Foreground = R("Text2"), Margin = new Thickness(0, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center });
+            var slider = new Slider
+            {
+                Style = S("Slide"), Minimum = 0, Maximum = 100, Value = now, SmallChange = 5, LargeChange = 20, Width = 110,
+                TickFrequency = 5, IsSnapToTickEnabled = true, IsMoveToPointEnabled = true, VerticalAlignment = VerticalAlignment.Center,
+                ToolTip = tip + " Changes at once. Double-click for 0.",
+            };
+            AutomationProperties.SetAutomationId(slider, "kvlr-" + key.Replace('_', '-'));
+            AutomationProperties.SetName(slider, label);
+            var text = new TextBlock { Text = now + "%", Width = 38, FontSize = 12, Foreground = R("Text"), Margin = new Thickness(6, 0, 0, 0),
+                                       FontFamily = (FontFamily)Window.FindResource("Mono"), VerticalAlignment = VerticalAlignment.Center };
+            int last = now;
+            slider.ValueChanged += (o, e) =>
+            {
+                int v = (int)(Math.Round(slider.Value / 5.0) * 5);
+                text.Text = v + "%";
+                if (v == last) return;
+                last = v;
+                KvlrSet(key, v);
+            };
+            slider.MouseDoubleClick += (o, e) => { slider.Value = 0; };
+            box.Children.Add(slider);
+            box.Children.Add(text);
+            return box;
         }
 
         /// <summary>A setting's whole text value: SettingText's file fallback (Prefs.Setting) stops at the first space,

@@ -10,7 +10,7 @@ OBS_SENDER = "KVLR PS5"  # the name OBS's Spout2 Capture source lists
 # Set once and changed on the launcher's Settings page (live, while playing too), so they stay out of the in-video
 # menu, which has to fit a 1080p picture with room for upstream's next settings (tests/test_settings.py).
 MENU_HIDDEN_GROUPS = {"OBS output", "PS5 connection", "Capture card", "Sound"}
-MENU_HIDDEN_KEYS = {"steady_pace"}  # set once on the launcher (the menu has no room left in Smoothness)
+MENU_HIDDEN_KEYS = {"steady_pace", "polish_sharpen", "polish_edges", "polish_noise", "polish_clarity", "polish_grain"}  # set once on the launcher (the menu has no room left in Smoothness)
 
 # chiaki-ng's saved settings (Qt QSettings in the registry). The launcher (installer/launcher/KvlrChiaki.cs) writes the
 # "PS5 connection" choices there just before Play starts chiaki-ng.
@@ -35,6 +35,24 @@ def chiaki_consoles() -> tuple:
         return tuple(names)
     except (OSError, ValueError, ImportError):
         return ()
+
+
+def _polish_specs(Spec) -> tuple:
+    """The Polish sliders (framegen/kvlr_looks.py), one per effect, 0-100 %, live. On the launcher's Play page."""
+    steps = tuple(range(0, 101, 5))
+    names = {v: f"{v}%" for v in steps}
+    rows = (
+        ("polish_sharpen", "Sharpen", "Sharper across edges and detail, with no halos. With Smooth noise on, the "
+         "finest specks aren't sharpened."),
+        ("polish_edges", "Smooth edges", "Smooths along edges, so diagonal stair-steps from upscaling fill in, "
+         "without blurring across the edge."),
+        ("polish_noise", "Smooth noise", "Smooths small speckle and shimmer in flat areas, keeping edges and "
+         "texture."),
+        ("polish_clarity", "Clarity", "Local contrast: texture and depth read stronger, without sharpening halos."),
+        ("polish_grain", "Grain", "Fine film grain. Hides banding; off by default."),
+    )
+    return tuple(Spec(k, label, steps, 0, names, group="Looks", help=h + " Goes after your look, or on its own. "
+                      "Changes at once.") for k, label, h in rows)
 
 
 def kvlr_specs(Spec, on_off: dict) -> tuple:
@@ -91,13 +109,7 @@ def kvlr_specs(Spec, on_off: dict) -> tuple:
                   "it, which looks juddery. The real frames then wait a few ms for their place, so a little more "
                   "delay. Changes at once.",
              hints={True: "Even 60 fps on screen and stream", False: "Each frame shown as soon as it's ready"}),
-        Spec("polish", "Polish", tuple(range(0, 201, 10)), 0, {v: f"{v}%" for v in range(0, 201, 10)},
-             group="Looks",
-             help="A finishing pass on the final picture: local contrast, a light sharpen and very fine grain, so an "
-                  "upscaled picture reads crisper. It goes after the look you use, or works on its own. 100% is the "
-                  "KVLR Polish look; 0% is off. Changes at once.",
-             impact={"picture": "Crisper, more detailed-looking picture; fine grain hides banding.",
-                     "speed": "Two small passes at the window's size: well under a millisecond."}),
+        *_polish_specs(Spec),
         Spec("cleanup", "Clean-up", ("off", "light", "medium", "strong", "max"), "off",
              {"off": "Off", "light": "Light", "medium": "Medium", "strong": "Strong", "max": "Max"}, live=False,
              group="Picture",
@@ -166,3 +178,16 @@ def kvlr_specs(Spec, on_off: dict) -> tuple:
                   "this PC's clock, which drifts against OBS's and can show as an occasional skipped or repeated "
                   "frame on stream."),
     )
+
+
+# Kev's settings as the KVLR edition's defaults (saved from his live setup, 2026-11-20): Settings.load uses them for any
+# setting the file doesn't hold yet (a new install, a deleted settings file). Each one applies only where it is a valid
+# choice on this PC (a paired console...), otherwise the stock default stays. The specs' own defaults are untouched, so
+# the upstream tests (which build Settings() directly) still see stock behaviour.
+KVLR_DEFAULTS = {
+    "even_dips": True, "model": "vfg", "vfg_quality": "high", "steady_hud": True, "vsr_quality": 4, "hdr": "hdr10",
+    "look": "kvlr-polish", "fullscreen": True, "vsync": True, "overlay_corner": "top_right", "overlay_size": "medium",
+    "ps5_console": "PS5-483", "ps5_on_stop": "rest", "ps5_bitrate": "100", "dlssg_motion": "smoothed",
+    "dlssg_depth": "estimated", "dlssg_lite": True, "obs_stats": True,
+}
+

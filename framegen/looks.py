@@ -168,6 +168,8 @@ TYPES_LIST: tuple[NodeType, ...] = (
              (_p("kind", "Type", 0, 2, 1, 1,
                  names=("Protanopia (red)", "Deuteranopia (green)", "Tritanopia (blue)")),)),
 )
+from . import kvlr_refine  # noqa: E402  KVLR: the Refine effect, sharpen + smooth in one pass (framegen/kvlr_refine.py)
+TYPES_LIST = TYPES_LIST + (kvlr_refine.node_type(NodeType, _p),)
 TYPES = {t.key: t for t in TYPES_LIST}
 BY_CODE = {t.code: t for t in TYPES_LIST}
 
@@ -330,6 +332,8 @@ def uniforms(n: dict, lut=None) -> list[tuple[str, object]]:
         return [("aspect", n["aspect"])]
     if t == "assist":
         return [("m", assist_matrix(int(n["kind"])))]
+    if t == "refine":  # KVLR: framegen/kvlr_refine.py
+        return kvlr_refine.uniforms(n)
     return []  # blur: everything is in its blurred copy
 
 
@@ -944,6 +948,8 @@ def _start(n: dict, u: dict, c, ctx):
         p = np.pad(c, ((1, 1), (1, 1), (0, 0)), mode="edge")
         nb = p[1:-1, 2:] + p[1:-1, :-2] + p[2:, 1:-1] + p[:-2, 1:-1]
         return c + np.float32(u["amount"]) * (c - 0.25 * nb)
+    if t == "refine":  # KVLR: framegen/kvlr_refine.py
+        return kvlr_refine.start(u, c, ctx, _bilerp, W709)
     raise ValueError(t)
 
 
@@ -997,7 +1003,7 @@ class LookState:
         self._unwatch = settings.watch(self._changed)
 
     def _changed(self, key: str) -> None:
-        if key in ("look", "look_on", "polish"):  # KVLR: the Polish slider (framegen/kvlr_looks.py)
+        if key in ("look", "look_on") or key.startswith("polish_"):  # KVLR: the Polish sliders (kvlr_looks.py)
             self.rev += 1
 
     def current(self) -> dict | None:
