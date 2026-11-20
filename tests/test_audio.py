@@ -252,6 +252,12 @@ def test_the_cards_sound_device_is_found_by_name():
     assert c.pick_audio("USB Video", devs) is None  # generic words only: no guess
     assert c.pick_audio("Elgato 4K X", [D("Elgato 4K X", "video"), D("Line (Elgato 4K X)", "audio"),
                                          D("Line (Elgato Wave)", "audio")]) == "Line (Elgato 4K X)"
+    # AVerMedia (issue 23): "-Video"/"-Audio" endings, and a "Not To Use" device named like the real one
+    avermedia = [D("Live Gamer Ultra 2.1-Video", "video"), D("HDMI/Line In (Live Gamer Ultra 2.1-Audio)", "audio"),
+                 D("Virtual Microphone (AVerMedia Streaming Center)", "audio"),
+                 D("Not To Use (Live Gamer Ultra 2.1-Audio)", "audio")]
+    assert c.pick_audio("Live Gamer Ultra 2.1-Video", avermedia) == "HDMI/Line In (Live Gamer Ultra 2.1-Audio)"
+    assert c.pick_audio("Live Gamer Ultra 2.1-Video", avermedia[:1] + avermedia[2:]) is None  # never "Not To Use"
 
 
 class _Out:

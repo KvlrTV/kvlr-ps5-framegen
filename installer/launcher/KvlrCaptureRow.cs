@@ -54,7 +54,7 @@ namespace SmoovPlay
             var spec = settingSpecs != null ? settingSpecs.FirstOrDefault(s => s.Key == "audio_out") : null;
             kvlrSoundShown = spec != null;
             if (spec == null) { LoadSettingSpecs(); return; }  // drawn once the list arrives (KvlrRefresh)
-            string now = SettingText("audio_out") ?? Json.Serialize(spec.Default).Trim('"');
+            string now = KvlrSettingFull("audio_out") ?? Json.Serialize(spec.Default).Trim('"');
             var drop = KvlrDrop("kvlr-audio-out", "Sound out",
                                 spec.Choices.Select(c => Kv((string)c.Key, c.Value)), now,
                                 v => KvlrSet("audio_out", v, nextPlay: true), minWidth: 230);
@@ -62,6 +62,22 @@ namespace SmoovPlay
             var lab = Labelled("Sound out", drop);
             ((FrameworkElement)lab).Margin = new Thickness(4, 4, 4, 4);
             chips.Children.Add(lab);
+        }
+
+        /// <summary>A setting's whole text value: SettingText's file fallback (Prefs.Setting) stops at the first space,
+        /// which cuts "Game (2- BEACN Mix Create)" to "Game".</summary>
+        string KvlrSettingFull(string key)
+        {
+            var values = liveState != null ? liveState["values"] as Dictionary<string, object> : null;
+            if (values != null && values.ContainsKey(key)) return Json.Serialize(values[key]).Trim('"');
+            try
+            {
+                var d = Json.DeserializeObject(System.IO.File.ReadAllText(Paths.SettingsFile)) as Dictionary<string, object>;
+                object v;
+                if (d != null && d.TryGetValue(key, out v) && v != null) return Convert.ToString(v);
+            }
+            catch (Exception) { }
+            return null;
         }
 
         void KvlrSet(string key, object value, bool nextPlay = false)

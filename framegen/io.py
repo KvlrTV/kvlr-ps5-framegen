@@ -793,9 +793,11 @@ class GLWindowSink:
         full logo at 48 and 64 (framegen/assets, from docs/brand). A missing icon never stops a session."""
         try:
             from pathlib import Path
+
+            from .imagefile import read_image
             images = []
             for n in (16, 24, 32, 48, 64):
-                bgra = cv2.imread(str(Path(__file__).with_name("assets") / f"icon_{n}.png"), cv2.IMREAD_UNCHANGED)
+                bgra = read_image(Path(__file__).with_name("assets") / f"icon_{n}.png", cv2.IMREAD_UNCHANGED)
                 if bgra is not None and bgra.shape == (n, n, 4):
                     images.append((n, n, bgra[..., [2, 1, 0, 3]]))
             if images:

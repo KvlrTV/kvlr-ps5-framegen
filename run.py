@@ -162,7 +162,7 @@ def open_capture(a, w: int, h: int, test):
               "601-full": (False, True)}[a.capture_colour]
     sound = None if a.capture_audio == "off" else sound_player()
     from framegen.kvlr_audio import player as kvlr_player  # KVLR: the Sound out pick (framegen/kvlr_audio.py)
-    sound = kvlr_player(sound, a.settings)
+    sound = kvlr_player(sound, getattr(a, "settings", None))
     if Path(a.capture).is_file():  # a recording standing in for a card: decoded, sent through the raw NV12 path
         return capture.CardSource.video_file(a.capture, test=test, colour=colour, audio=sound)
     name = a.capture
@@ -840,7 +840,8 @@ def main() -> int:
         for t, name in zip(tiles, ("previous real", f"RIFE ({p:.1f} dB)", "actual in-between", "next real")):
             cv2.putText(t, name, (15, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.1, (0, 0, 0), 5, cv2.LINE_AA)
             cv2.putText(t, name, (15, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.1, (255, 255, 255), 2, cv2.LINE_AA)
-        cv2.imwrite(a.save_worst, cv2.vconcat([cv2.hconcat(tiles[:2]), cv2.hconcat(tiles[2:])]))
+        from framegen.imagefile import write_image
+        write_image(a.save_worst, cv2.vconcat([cv2.hconcat(tiles[:2]), cv2.hconcat(tiles[2:])]))
         print(f"[run] worst frame (tick {tick}) -> {a.save_worst}")
     return 0
 

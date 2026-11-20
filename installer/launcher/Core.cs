@@ -276,6 +276,8 @@ namespace SmoovPlay
         public void Run()
         {
             Log($"SmoovPlay {BuildInfo.Version} setup, {DateTime.Now:yyyy-MM-dd HH:mm:ss}, into {p.Install}");
+            if (p.Install.Any(c => c > 127))  // (diagnostics hide the user's name, which can be where they are)
+                Log("Note: the install folder's path has letters outside English A-Z. If a step fails, a folder like C:\\SmoovPlay is worth a try.");
             Directory.CreateDirectory(p.Install);
             Directory.CreateDirectory(p.Runtime);
             if (File.Exists(p.Ready)) File.Delete(p.Ready);
@@ -1267,6 +1269,18 @@ namespace SmoovPlay
 
     static class Diagnostics
     {
+        static void AppendLog(StringBuilder sb, string logFile, int max)
+        {
+            string[] lines;
+            using (var fs = new FileStream(logFile, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+            using (var sr = new StreamReader(fs))
+                lines = sr.ReadToEnd().Split('\n');
+            int n = Math.Min(max, lines.Length);
+            sb.AppendLine($"Log {Path.GetFileName(logFile)}, last {n} lines:");
+            foreach (var l in lines.Skip(lines.Length - n))
+                sb.AppendLine(l.TrimEnd('\r'));
+        }
+
         public static string Collect(Paths p, string lastLog)
         {
             var sb = new StringBuilder();
@@ -1291,7 +1305,9 @@ namespace SmoovPlay
                 if (!AppWindows.Loaded && p.RuntimeReady) AppWindows.Load(p);
                 sb.Append(AppWindows.Summary());
             }
-            sb.AppendLine("Install: " + p.Install + (p.Dev ? " (dev)" : ""));
+            // (The user's name is taken out below: a path like C:\Users\<name with Chinese letters> would look fine.)
+            sb.AppendLine("Install: " + p.Install + (p.Dev ? " (dev)" : "")
+                          + (p.Install.Any(c => c > 127) ? " (the path has letters outside English A-Z)" : ""));
             sb.AppendLine("Runtime: " + (File.Exists(p.Ready) ? File.ReadAllText(p.Ready).Trim() : "not ready"));
             sb.AppendLine("chiaki-ng: " + (Chiaki.Ours(p) != null ? "running (started by SmoovPlay)" : "not started by SmoovPlay")
                           + $", {Chiaki.Others(p).Length} other chiaki-ng running");
@@ -1301,15 +1317,16 @@ namespace SmoovPlay
             if (logFile == null && Directory.Exists(p.Logs))
                 logFile = new DirectoryInfo(p.Logs).GetFiles("*.log").OrderByDescending(f => f.LastWriteTime).Select(f => f.FullName).FirstOrDefault();
             if (logFile != null && File.Exists(logFile))
+                AppendLog(sb, logFile, 200);
+            // Copied after setup (its log is the launcher's last): the newest game session's log too, which is what a
+            // report about playing needs, or a note that there's none yet
+            if (logFile == null || Path.GetFileName(logFile).StartsWith("setup-", StringComparison.OrdinalIgnoreCase))
             {
-                string[] lines;
-                using (var fs = new FileStream(logFile, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
-                using (var sr = new StreamReader(fs))
-                    lines = sr.ReadToEnd().Split('\n');
-                int n = Math.Min(200, lines.Length);
-                sb.AppendLine($"Log {Path.GetFileName(logFile)}, last {n} lines:");
-                foreach (var l in lines.Skip(lines.Length - n))
-                    sb.AppendLine(l.TrimEnd('\r'));
+                string session = Directory.Exists(p.Logs)
+                    ? new DirectoryInfo(p.Logs).GetFiles("session-*.log").OrderByDescending(f => f.LastWriteTime).Select(f => f.FullName).FirstOrDefault()
+                    : null;
+                if (session != null) AppendLog(sb, session, 200);
+                else sb.AppendLine("No game session log yet: after playing, press Copy diagnostics again.");
             }
             string results = LatestResults(p);
             if (results != null)

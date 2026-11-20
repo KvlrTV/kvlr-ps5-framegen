@@ -70,8 +70,8 @@ def chosen(settings_arg: str) -> str:
 
 def player(Player, settings_arg: str):
     """The sound player class, opened on the chosen output (Windows' default if it's gone)."""
-    if Player is None:
-        return None
+    if Player is None or not callable(Player) or not settings_arg:
+        return Player  # no settings file (tests, direct runs): upstream's Windows default output
     name = chosen(settings_arg)
     idx = device_index(name)
     print(f"[capture] sound out: {name if idx is not None else 'Windows default output'}")

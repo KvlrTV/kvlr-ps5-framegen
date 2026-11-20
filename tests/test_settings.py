@@ -262,7 +262,7 @@ def test_the_in_video_menu_fits_a_window_whatever_is_picked():
                           for k in ("overlay", "vsync", "fullscreen", "audio_sync", "minimize_chiaki"))
     m = Menu(Settings({}), specs=extra)
     m.page = "Smoothness"
-    assert len(m.rows()) == 14 and m.render(1.0).shape[0] <= 1060
+    assert len(m.rows()) == 15 and m.render(1.0).shape[0] <= 1060
 
 
 def test_the_menu_text_fits():

@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.3.10
+
+**Capture cards** (Experimental)
+- **Game frame rate: 30 fps no longer hitches on a capture card** ([#20](https://github.com/smoovplay/smoovplay/issues/20)).
+  When the PC fell behind for a moment and a frame was dropped, SmoovPlay lost count of which frames were new, and
+  catching up a moment later showed as a hitch. Frames are now numbered as they come off the card, so a dropped one
+  no longer moves the count.
+- **The card's sound is found on AVerMedia cards** ([#23](https://github.com/smoovplay/smoovplay/issues/23)). Names
+  ending in "-Video" and "-Audio" now match, and AVerMedia's extra sound device called "Not To Use" is never picked.
+  Before, the two tied and SmoovPlay played the picture without sound.
+
+**App window** (Experimental)
+- **Capture keeps trying for 10 seconds when Windows takes it away**
+  ([#21](https://github.com/smoovplay/smoovplay/issues/21)), for example when the screen changes mode. It used to
+  give up after two seconds. The log now says Windows' reason in words.
+
+**Setup**
+- **SmoovPlay installs into a folder whose name has letters outside English**
+  ([#24](https://github.com/smoovplay/smoovplay/issues/24)), such as Chinese, or an accented Windows user name.
+  Setup's "Optimise for your graphics card" step failed there.
+
+**Test mode**
+- **Simulate a 30 fps game turns itself off on a game that's at 30 fps already**
+  ([#26](https://github.com/smoovplay/smoovplay/issues/26)). It halved such a game to 15 fps, which stutters. It
+  stays on through a 60 fps game's 30 fps cutscenes. In the video window's menu (M) it's now under Smoothness, next
+  to Game frame rate.
+
+**Diagnostics**
+- **The log says how evenly the game's frames arrived** ([#25](https://github.com/smoovplay/smoovplay/issues/25)):
+  frames that came late or bunched together point at Wi-Fi or the capture, not the PC.
+- **Copy diagnostics includes your last game session's log**, also when copied right after setup.
+
 ## 0.3.9
 
 **Display**

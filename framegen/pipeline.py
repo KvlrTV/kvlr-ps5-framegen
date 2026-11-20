@@ -110,6 +110,8 @@ class ShownRate:
 
 # How long the game has to stay off the rate that's needed before the overlay says so, and before the one-off message
 RATE_NOTE_S, RATE_TOAST_S = 3.0, 10.0
+# Said when "Simulate a 30 fps game" goes off by itself: the game was at 30 fps already, and Simulate halved it
+SIMULATE_OFF = "Simulate turned off: this game is at about {g} fps already, and Simulate halved that"
 
 
 def rate_advice(game_fps: float | None, test: bool, even: bool = False) -> str:
@@ -179,6 +181,9 @@ class Stats:
     uneven_fps: list = field(default_factory=list)
     uneven_waits: int = 0
     dip_ticks: int = 0  # Dip smoothing: ticks played with frames timed as they arrived (waits count above)
+    # Time between the game's new frames as they reached SmoovPlay (stamped as they came off the stream, card or
+    # window, before any processing): late frames and bunches point at the network or the capture (arrival_line)
+    new_gaps_ms: list = field(default_factory=list)
     wall_s: float = 0.0
     exit: str = "end"  # why run() returned: "end" (source finished), "quit" or "restart" (asked by the sink)
     stale: int = 0  # frames skipped because they arrived before run() started (queued during a restart)
@@ -190,6 +195,20 @@ class Stats:
                     "allow sharing them and the log goes into Copy diagnostics. The stats overlay (S) and test mode's "
                     "report show them on this PC.")
 
+    def arrival_line(self) -> str:
+        """How evenly the game's new frames reached SmoovPlay, or "" for a short session. A steady stream has its
+        frames the same time apart (33 ms for a 30 fps game); Wi-Fi or a busy capture shows as late frames and
+        bunches (two close together after a late one), which look like stutter whatever the PC does."""
+        gaps = self.new_gaps_ms
+        if len(gaps) < 20:
+            return ""
+        usual = float(np.median(gaps))
+        late = sum(g > 1.5 * usual for g in gaps) / len(gaps)
+        bunched = sum(g < 0.5 * usual for g in gaps) / len(gaps)
+        return (f"game frames as they arrived: {len(gaps) + 1} new, usually {usual:.1f} ms apart; "
+                f"{100 * late:.1f}% late (over 1.5x that), {100 * bunched:.1f}% bunched (under half); "
+                f"longest gap {max(gaps):.0f} ms")
+
     def summary(self) -> str:
         def pct(xs, p):
             return float(np.percentile(xs, p)) if xs else float("nan")
@@ -199,6 +218,8 @@ class Stats:
             f"ticks={n}  wall={self.wall_s:.1f}s",
             f"actions: {dict(self.actions)}",
         ]
+        if arrival := self.arrival_line():  # (the game's frames, not the engine's work: in a private log too)
+            lines.append(arrival)
         tg = self.test_game_new + self.test_game_repeat
         if tg:
             lines.append(f"test mode: {self.test_game_repeat} of {tg} frames were repeats in the game itself (a steady "
@@ -413,6 +434,10 @@ class Pipeline:
         rhythm, rhythm_moves, rhythm_note = None, 0, 0.0  # Game frame rate 30 fps: the lock, its moves, next note
         off_since: float | None = None  # since when the game has been off the rate that's needed
         note, toasted = "", set()
+        # Simulate a 30 fps game on a game that's at 30 already: whether the game has been at 60 since Simulate went
+        # on (then a 30 fps stretch is a cutscene, not the game), and since when it has been at about 30
+        test_at_60, at30_since = False, None
+        last_new_at = None  # when the last new frame arrived (Stats.new_gaps_ms)
 
         def test_line() -> str:
             """Test mode's badge, and quality over the last ~30 scored frames (about a second). 90 fps draws frames
@@ -549,6 +574,10 @@ class Pipeline:
                         rhythm_note = t0 + 10.0
                         print(f"[pipeline] 30 fps: the game's frames moved by a tick ({rhythm_moves} so far)")
             seen_rate.add(is_new)
+            if is_new:
+                if last_new_at is not None:
+                    st.new_gaps_ms.append((tick.t_arrival - last_new_at) * 1000)
+                last_new_at = tick.t_arrival
             # In test mode the source's own word on the game's frame (TestMode puts it in extra["game_new"]).
             game_new = tick.extra["game_new"] if "game_new" in tick.extra else is_new
             game_rate.add(game_new)
@@ -730,7 +759,22 @@ class Pipeline:
                 if t_ready >= ov_next:
                     test = settings is not None and settings.simulate_30
                     even = sink is not None and (settings is None or getattr(settings, "even_out", True))
-                    advice = rate_advice(game_rate.fps(), test, even) if enabled or test else ""
+                    game_fps = game_rate.fps()
+                    # Simulate on a game at about 30 fps already plays it at 15 (e.g. started with the launcher's
+                    # "Test with a 60 fps game"): after RATE_TOAST_S it goes off by itself (TestMode follows the
+                    # setting). Not when the game has been at 60 since Simulate went on: a 30 fps cutscene.
+                    test_at_60 = test and (test_at_60 or (game_fps is not None and game_fps >= 50))
+                    at30 = test and not test_at_60 and game_fps is not None and 24 <= game_fps < 38.5
+                    at30_since = None if not at30 else t_ready if at30_since is None else at30_since
+                    if at30 and t_ready - at30_since >= RATE_TOAST_S:
+                        settings.override("simulate_30", False)
+                        test, at30_since = False, None
+                        toasted.add(True)  # its own message instead of the advice
+                        said = SIMULATE_OFF.format(g=round(game_fps))
+                        print(f"[pipeline] {said}")
+                        if hasattr(sink, "toast"):
+                            sink.toast(said, 8.0)
+                    advice = rate_advice(game_fps, test, even) if enabled or test else ""
                     if not advice:
                         off_since, note = None, ""
                     else:

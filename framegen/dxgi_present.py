@@ -509,13 +509,13 @@ class DxgiPresenter:
             _release(staging)
 
     def _snap(self, vsync: bool) -> None:
-        import cv2
+        from .imagefile import write_image
         self.snap_next = False
         try:
             os.makedirs(SNAP_DIR, exist_ok=True)
             name = f"dxgi_{self.presents:06d}_{self.w}x{self.h}_vsync-{'on' if vsync else 'off'}.png"
             img = self.read_back()
-            cv2.imwrite(os.path.join(SNAP_DIR, name), img << 6 if self.hdr else img)  # (HDR: a 16-bit PNG of PQ)
+            write_image(os.path.join(SNAP_DIR, name), img << 6 if self.hdr else img)  # (HDR: a 16-bit PNG of PQ)
             self.snaps += 1
         except Exception as e:  # noqa: BLE001 - testing aid: say so, keep presenting
             print(f"[display] couldn't save the back buffer: {e}")
