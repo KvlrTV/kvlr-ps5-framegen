@@ -526,7 +526,7 @@ namespace SmoovPlay
         {
             if (updating) return;
             bool same = tag == updateTag;
-            updateUrl = url;
+            updateUrl = KvlrSite;  // KVLR: "What's new" and copies that can't update themselves go to gta.kvlrtv.com
             updateTag = tag;
             var link = B("RailUpdate");
             link.Content = "Update available: " + V(tag);
@@ -577,7 +577,7 @@ namespace SmoovPlay
             BuildKeys();
             T("HelpVersion").Text = $"SmoovPlay {BuildInfo.Version}  ·  Python {BuildInfo.PythonVersion}  ·  {paths.Install}";
             if (!paths.Dev) Task.Run(() => Updater.CleanUp());  // an update this one came from
-            UpdateCheck.Start((tag, url) => Window.Dispatcher.BeginInvoke(new Action(() => ShowUpdate(tag, url))));
+            KvlrUpdateStart();  // KVLR: launch prompt that installs updates by itself (KvlrUpdates.cs), instead of UpdateCheck.Start
             Show(B("RailCheck"), GitHub.Repo != null);
             WatchSaving();  // before & after videos a session left being made, even before this launcher opened
             B("HelpRepair").IsEnabled = !paths.Dev;

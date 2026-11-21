@@ -145,6 +145,18 @@ otherwise the feed is FSR-upscaled from the source frame, without the look. Off 
   newest published release signed with our key. Download page for friends: `https://gta.kvlrtv.com`, which links to
   the latest release's `SmoovPlay-Setup.exe`, so it never needs changing when a new release goes out.
 
+**Automatic updates (0.4.14)** (`installer/launcher/KvlrUpdates.cs`, hooks in `Ui.cs` StartLauncher, which calls
+KvlrUpdateStart instead of UpdateCheck.Start, and ShowUpdate, whose link goes to gta.kvlrtv.com): when the launcher opens,
+and every 3 hours while it is open, it asks GitHub for the newest release (no 6-hour cache). A newer one opens "Update to
+vX?" (Update now / Not now / All versions), which installs it through upstream's signed RunUpdate after a 15-second
+countdown. No prompt while playing, saving a clip or over another dialog, or for copies that can't update themselves. The
+newest version a PC has run is kept in `%APPDATA%\framegen\kvlr-highest-version.txt`. A copy rolled back below it only
+gets the prompt for a release newer than that version; the rail link still shows. gta.kvlrtv.com lists every release
+with its setup (`#versions`) for rolling back, and the Help page has an "All versions" link. Tested 2026-11-21 against a
+local stand-in API (`SMOOVPLAY_RELEASES_API`): 0.4.14 auto-installed a signed 0.4.15-rc.1, and after rolling back to
+0.4.14 it showed no prompt. An update fails if a second launcher window still holds `SmoovPlay.exe`; Retry fixes it
+once that window is closed.
+
 **One-wizard install (0.4.13)** (`installer/launcher/KvlrSetup.cs`, hooks in `Core.cs` Installer.Run and `Ui.cs`
 RunChecks / CheckNext / StartInstall; `kvlr/build_kvlr.py` stage_vc_redist): Microsoft's Visual C++ redistributable ships
 in the setup (`app\redist`, Authenticode-checked at build and before it runs) and the install step runs it when it's
