@@ -617,6 +617,8 @@ class GLWindowSink:
         self.timer = GpuTimer(GL)  # GPU time of the scale/draw step, reported on close
         from .kvlr_obs import ObsFeed  # KVLR: OBS output (framegen/kvlr_obs.py)
         self.kvlr_obs = ObsFeed(GL, sharpness)
+        from .kvlr_remote import RemoteFeed  # KVLR: picture for KVLR Remote Play (framegen/kvlr_remote.py)
+        self.kvlr_remote = RemoteFeed(GL)
         from .kvlr_keys import HoldToStop  # KVLR: Esc held 5 s, then confirmed (framegen/kvlr_keys.py)
         self.kvlr_hold = HoldToStop()
 
@@ -1331,6 +1333,8 @@ class GLWindowSink:
             self.panorama.draw(screen, fw, fh, panorama_t(fw, fh, self.w, self.h))
             label += " + panorama"
         self.timer.end(q, f"{label} {dw}x{dh}")
+        if getattr(self, "kvlr_remote", None) is not None:  # KVLR: Remote Play gets the clean picture
+            self.kvlr_remote.frame(self, target, x0, y0, dw, dh)
         obs_stats = getattr(self.settings, "obs_stats", False)  # KVLR: the stats bar on the OBS feed too
         if self.kvlr_obs is not None and not obs_stats:  # KVLR: clean feed for OBS, before any menu or stats
             self.kvlr_obs.frame(self, target, x0, y0, dw, dh)  # (framegen/kvlr_obs.py)
@@ -1527,6 +1531,8 @@ class GLWindowSink:
             self.fsr.close()
         if self.kvlr_obs is not None:  # KVLR
             self.kvlr_obs.close()
+        if getattr(self, "kvlr_remote", None) is not None:  # KVLR
+            self.kvlr_remote.close()
         if self._bake is not None:
             self._bake[2].close()
             self.GL.glDeleteFramebuffers(1, [self._bake[1]])

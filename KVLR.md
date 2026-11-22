@@ -32,6 +32,7 @@ The upstream `README.md`, `LICENSE` and `NOTICE` stay as they are.
 |---|---|---|
 | Settings registry additions | `framegen/kvlr_settings.py` | `framegen/settings.py` (appends to `SPECS`), `framegen/menu.py` (launcher-only groups stay out of the in-video menu), two assertions in `tests/test_settings.py` |
 | OBS output: a clean picture (no menu, stats or notes) sent to OBS through Spout, 4K/1440p/1080p at 60 or 30 fps | `framegen/kvlr_obs.py` | `framegen/io.py` (made in `GLWindowSink.__init__`, called in `write()` before the UI is drawn, closed in `close()`); `SpoutGL==0.1.1` in `installer/requirements-runtime.txt` |
+| Remote Play output: the clean picture for KVLR Remote Play (KVLR Bridge `remote_play`, remotegta6.kvlrtv.com), copied into shared memory `Local\kvlr-remote-frames` by an asynchronous GPU readback, only while the bridge holds it open. Spout gets ~12 fps across processes from this window and Windows' capture none, so it has its own path | `framegen/kvlr_remote.py` | `framegen/io.py` (made beside the OBS feed in `GLWindowSink.__init__`, called in `write()` before stats and menu, closed in `close()`) |
 
 **Branding** (`kvlr/branding.py`, `kvlr/brand/kvlr-mark.png`) touches no upstream file. At build time it brands
 *copies*: the launcher's C# and XAML are copied to `installer/build/kvlr-brand/` and compiled from there, and the
