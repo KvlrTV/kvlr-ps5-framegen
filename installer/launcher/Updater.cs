@@ -28,7 +28,7 @@ namespace SmoovPlay
     /// </summary>
     static class GitHub
     {
-        public const string SetupName = "SmoovPlay-Setup.exe";
+        public static string SetupName { get { return KvlrChannel.SetupName; } }  // KVLR: private or public build (KvlrChannel.cs)
 
         public static string Repo
         {
@@ -91,6 +91,7 @@ namespace SmoovPlay
                     }
                     else if (name == SetupName + ".sig") rel.SigId = Num(Get(a, "id"));
                 }
+                if (!rel.CanInstall) continue;  // KVLR: a release without this build's setup isn't an update for it
                 best = rel;
             }
             return best;

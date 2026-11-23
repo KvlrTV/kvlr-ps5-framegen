@@ -617,8 +617,11 @@ class GLWindowSink:
         self.timer = GpuTimer(GL)  # GPU time of the scale/draw step, reported on close
         from .kvlr_obs import ObsFeed  # KVLR: OBS output (framegen/kvlr_obs.py)
         self.kvlr_obs = ObsFeed(GL, sharpness)
-        from .kvlr_remote import RemoteFeed  # KVLR: picture for KVLR Remote Play (framegen/kvlr_remote.py)
-        self.kvlr_remote = RemoteFeed(GL)
+        try:  # KVLR: picture for KVLR Remote Play (framegen/kvlr_remote.py, private build only)
+            from .kvlr_remote import RemoteFeed
+            self.kvlr_remote = RemoteFeed(GL)
+        except ImportError:
+            self.kvlr_remote = None
         from .kvlr_keys import HoldToStop  # KVLR: Esc held 5 s, then confirmed (framegen/kvlr_keys.py)
         self.kvlr_hold = HoldToStop()
 

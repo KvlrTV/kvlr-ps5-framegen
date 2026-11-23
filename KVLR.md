@@ -32,7 +32,7 @@ The upstream `README.md`, `LICENSE` and `NOTICE` stay as they are.
 |---|---|---|
 | Settings registry additions | `framegen/kvlr_settings.py` | `framegen/settings.py` (appends to `SPECS`), `framegen/menu.py` (launcher-only groups stay out of the in-video menu), two assertions in `tests/test_settings.py` |
 | OBS output: a clean picture (no menu, stats or notes) sent to OBS through Spout, 4K/1440p/1080p at 60 or 30 fps | `framegen/kvlr_obs.py` | `framegen/io.py` (made in `GLWindowSink.__init__`, called in `write()` before the UI is drawn, closed in `close()`); `SpoutGL==0.1.1` in `installer/requirements-runtime.txt` |
-| Remote Play output: the clean picture for KVLR Remote Play (KVLR Bridge `remote_play`, remotegta6.kvlrtv.com), copied into shared memory `Local\kvlr-remote-frames` by an asynchronous GPU readback, only while the bridge holds it open. Spout gets ~12 fps across processes from this window and Windows' capture none, so it has its own path | `framegen/kvlr_remote.py` | `framegen/io.py` (made beside the OBS feed in `GLWindowSink.__init__`, called in `write()` before stats and menu, closed in `close()`) |
+| **Private build only.** Remote Play output: the clean picture for KVLR Remote Play (KVLR Bridge `remote_play`, remotegta6.kvlrtv.com), copied into shared memory `Local\kvlr-remote-frames` by an asynchronous GPU readback, only while the bridge holds it open. Spout gets ~12 fps across processes from this window and Windows' capture none, so it has its own path | `framegen/kvlr_remote.py` | `framegen/io.py` (made beside the OBS feed in `GLWindowSink.__init__`, called in `write()` before stats and menu, closed in `close()`) |
 
 **Branding** (`kvlr/branding.py`, `kvlr/brand/kvlr-mark.png`) touches no upstream file. At build time it brands
 *copies*: the launcher's C# and XAML are copied to `installer/build/kvlr-brand/` and compiled from there, and the
@@ -140,8 +140,23 @@ otherwise the feed is FSR-upscaled from the source frame, without the look. Off 
   Installed copies only accept updates signed with it. Backed up in KVLR Vault (kvlr-stack secrets, scope `infra`) as
   `KVLR_FRAMEGEN_UPDATE_SIGNING_KEY`; on a new build PC restore it with
   `kvlr-secret run --scope infra -- python -c "import os,pathlib; p=pathlib.Path.home()/'.kvlr-ps5-framegen'/'update-signing-key.xml'; p.parent.mkdir(exist_ok=True); p.write_text(os.environ['KVLR_FRAMEGEN_UPDATE_SIGNING_KEY'])"`.
+- **Two builds, one set of releases** (`installer/launcher/KvlrChannel.cs`, hook in `Updater.cs` `GitHub.SetupName` and
+  `Newest`; `kvlr/build_kvlr.py --private`):
+  - **Public** (`python kvlr/build_kvlr.py --version X`): `SmoovPlay-Setup.exe` + `.sig`, what gta.kvlrtv.com and
+    friends get. Leaves out the private-only app files (`PRIVATE_APP_FILES` in `build_kvlr.py`: `framegen/kvlr_remote.py`).
+  - **Private**, Kev's own (`python kvlr/build_kvlr.py --version X --private`, after the public one): everything,
+    written as `installer/dist/KVLR-Private-Setup.exe` + `.sig`.
+  - Both go up to the **same release**, same version, same signing key. Each copy only updates from its own setup and
+    skips a release that doesn't have it, so a public copy never turns private and the reverse. A public-only release
+    is fine; Kev's copy waits for the next release with a private setup.
+  - The repo is public, so the private setup can be downloaded by anyone who goes looking on the releases page. It is
+    private by channel, not secret (its source is in this repo anyway).
+  - Moving a copy across: run the other setup once by hand; it then follows that channel.
+  - Checked 2026-11-23 against a stand-in releases API: the public 0.4.15 build took a public-only 0.4.16 and the
+    private build skipped it for its own 0.4.15 file; drafts ignored.
 - Release: run `release.yml` from the Actions tab (it drafts the release), upload
-  `installer/dist/SmoovPlay-Setup.exe` and its `.sig`, then publish.
+  `installer/dist/SmoovPlay-Setup.exe` and its `.sig` (and `KVLR-Private-Setup.exe` and its `.sig` when there's a
+  private build), then publish.
 - The repo is public, so the in-app update check works on any PC with no token: every installed copy offers the
   newest published release signed with our key. Download page for friends: `https://gta.kvlrtv.com`, which links to
   the latest release's `SmoovPlay-Setup.exe`, so it never needs changing when a new release goes out.

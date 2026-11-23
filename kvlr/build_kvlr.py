@@ -7,6 +7,7 @@ SmoovPlay's updates cleanly.
     python kvlr/build_kvlr.py                       # version <upstream>-kvlr.1
     python kvlr/build_kvlr.py --kvlr 3              # version <upstream>-kvlr.3
     python kvlr/build_kvlr.py --version 0.4.0-kvlr.1 --launcher-only
+    python kvlr/build_kvlr.py --version 0.4.15 --private   # Kev's private build (see PRIVATE below)
 
 Any other argument goes straight to installer/build.py.
 
@@ -28,6 +29,10 @@ SIGNING_KEY = Path(os.environ.get("KVLR_FRAMEGEN_SIGNING_KEY")
 EXTRA_CSC = [Path(r"C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin\Roslyn\csc.exe")]
 # Inputs taken from an installed SmoovPlay (see KVLR.md, "Building"), used when no --chiaki-* is given.
 INPUTS = Path(os.environ.get("KVLR_FRAMEGEN_INPUTS") or ROOT.parent / "kvlr-ps5-framegen-inputs")
+# Two builds share one set of releases (installer/launcher/KvlrChannel.cs). The private one is Kev's own: it adds the
+# files below and installs/updates from KVLR-Private-Setup.exe on the same release; the public one leaves them out.
+PRIVATE_SETUP = "KVLR-Private-Setup.exe"
+PRIVATE_APP_FILES = ["framegen/kvlr_remote.py"]  # KVLR Remote Play output
 
 
 def load_upstream_build():
@@ -112,13 +117,35 @@ def stage_vc_redist(stage: Path) -> None:
     print(f"[kvlr] Visual C++ runtime staged ({cached.stat().st_size // 1_000_000} MB)")
 
 
-def apply_branding(build):
+def strip_private(stage: Path) -> None:
+    """Public build: the private-only app files come out of the staged app (io.py copes with their absence)."""
+    for rel in PRIVATE_APP_FILES:
+        f = stage / "app" / rel
+        if f.exists():
+            f.unlink()
+    print(f"[kvlr] public build: left out {', '.join(PRIVATE_APP_FILES)}")
+
+
+def make_private(root: Path) -> None:
+    """Private build: its branded launcher copy says so, which picks its own setup on each release."""
+    f = root / "launcher" / "KvlrChannel.cs"
+    src = f.read_text(encoding="utf-8")
+    new = src.replace('public const string Name = "public";', 'public const string Name = "private";')
+    if new == src:
+        sys.exit("[kvlr] KvlrChannel.cs no longer has the channel line; update kvlr/build_kvlr.py")
+    f.write_text(new, encoding="utf-8")
+    print("[kvlr] private build: channel private, setup " + PRIVATE_SETUP)
+
+
+def apply_branding(build, private=False):
     """KVLR name, colours, logo and icon (kvlr/branding.py), on copies: upstream's files stay untouched."""
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     import branding
 
     build.BUILD.mkdir(parents=True, exist_ok=True)
     root = branding.brand_launcher(build.HERE / "launcher", build.BUILD / "kvlr-brand")
+    if private:
+        make_private(root)
     build.icon_rgba = branding.icon_rgba
     compile_exe, stage_payload = build.compile_exe, build.stage_payload
 
@@ -135,6 +162,8 @@ def apply_branding(build):
         print(f"[kvlr] branded {branding.brand_app(stage)} app files")
         stage_ngx(stage)
         stage_vc_redist(stage)
+        if not private:
+            strip_private(stage)
 
     build.compile_exe, build.stage_payload = branded_compile, branded_stage
     print(f"[kvlr] branding: {branding.NAME}, launcher copies in {root}")
@@ -142,10 +171,15 @@ def apply_branding(build):
 
 def main():
     build = load_upstream_build()
+    private = "--private" in sys.argv
+    if private:
+        sys.argv.remove("--private")
     if "--no-brand" in sys.argv:
+        if private:
+            sys.exit("[kvlr] --private needs the branding (it lives in the branded launcher copy)")
         sys.argv.remove("--no-brand")
     else:
-        apply_branding(build)
+        apply_branding(build, private)
     build.RELEASES_REPO = RELEASES_REPO
     build.SIGNING_KEY = SIGNING_KEY
     if hasattr(build, "CSC_CANDIDATES"):
@@ -154,8 +188,19 @@ def main():
         os.environ.setdefault("SMOOVPLAY_CHIAKI_BUILD", str(INPUTS / "chiaki-build"))
         os.environ.setdefault("SMOOVPLAY_CHIAKI_SRC", str(INPUTS / "chiaki-ng"))
     sys.argv = [sys.argv[0]] + kvlr_args(sys.argv[1:], build.VERSION)
-    print(f"[kvlr] releases repo {RELEASES_REPO}, signing key {SIGNING_KEY}, args {' '.join(sys.argv[1:])}")
-    return build.main()
+    print(f"[kvlr] releases repo {RELEASES_REPO}, signing key {SIGNING_KEY}, {'private' if private else 'public'} "
+          f"build, args {' '.join(sys.argv[1:])}")
+    rc = build.main()
+    if rc == 0 and private:
+        # upstream writes SmoovPlay-Setup.exe; the private one goes up to the same release under its own name
+        # (the .sig vouches for the file's hash and version, not its name). A public build afterwards won't clobber it.
+        dist = build.DIST
+        for ext in ("", ".sig"):
+            src, dst = dist / ("SmoovPlay-Setup.exe" + ext), dist / (PRIVATE_SETUP + ext)
+            if src.exists():
+                src.replace(dst)
+        print(f"[kvlr] private setup: {dist / PRIVATE_SETUP} (+ .sig); upload both to the release with the public pair")
+    return rc
 
 
 if __name__ == "__main__":
